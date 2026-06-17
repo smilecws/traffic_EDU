@@ -35,6 +35,7 @@ export function useQuizSession() {
       license?: string;
       type?: string;
       startNumber?: number;
+      questionIds?: string[];
     }): Promise<QuizSession> => {
       const nextMode = opts?.mode ?? "random";
       const nextLicense = opts?.license;
@@ -56,7 +57,11 @@ export function useQuizSession() {
         const picked = buildQuizQuestions(
           nextMode,
           { all, wrongIds, favoriteIds },
-          { type: opts?.type, startNumber: opts?.startNumber },
+          {
+            type: opts?.type,
+            startNumber: opts?.startNumber,
+            questionIds: opts?.questionIds,
+          },
         );
         const newSession: QuizSession = {
           id: `session-${Date.now()}`,
@@ -112,7 +117,9 @@ export function useQuizSession() {
    *   분모가 전체 문제 수가 되도록 한다(모의고사 합격 판정 정확성).
    */
   const finish = useCallback(
-    (opts?: { fillUnansweredAsWrong?: boolean }): SessionResult | null => {
+    (opts?: {
+      fillUnansweredAsWrong?: boolean;
+    }): { result: SessionResult; results: QuestionResult[] } | null => {
       if (!session) return null;
       const finishedAt = Date.now();
 
@@ -130,7 +137,9 @@ export function useQuizSession() {
         finishedAt,
       });
       setSession((prev) => (prev ? { ...prev, finishedAt } : prev));
-      return result;
+      // 채점에 쓴 results(미응답 채움 포함)를 함께 반환해야 오답노트/집계에
+      // 미응답 문제까지 반영된다. session.results만 저장하면 채움분이 누락된다.
+      return { result, results };
     },
     [session],
   );

@@ -94,8 +94,9 @@ function PersonalSummary({
 }
 
 /**
- * 많이 틀린 문제 Top 50 섹션.
+ * 오답률 높은 문제 Top 50 섹션.
  * useGlobalStats(정적 JSON)로 집계를 가져와 useQuestions로 문제 텍스트를 조인한다.
+ * 집계가 이미 오답률순으로 제공하므로 그대로 렌더한다.
  * 집계 미구성/집계 전(null·빈 배열)은 에러가 아니라 안내로 처리한다.
  */
 function GlobalTop50() {
@@ -114,7 +115,7 @@ function GlobalTop50() {
   return (
     <section className="space-y-3">
       <h2 className="text-base font-semibold text-slate-900">
-        많이 틀린 문제 Top 50
+        오답률 높은 문제 Top 50
       </h2>
 
       {loading ? (
@@ -147,11 +148,11 @@ function GlobalTop50() {
                       {question.question}
                     </p>
                     <span className="text-xs text-slate-400 tabular-nums">
-                      {question.number}번
+                      {question.number}번 · 오답 {entry.wrong}/{entry.attempts}
                     </span>
                   </div>
                   <span className="shrink-0 text-sm font-semibold tabular-nums text-red-500">
-                    {entry.wrongCount}
+                    {Math.round(entry.wrongRate * 100)}%
                   </span>
                 </li>
               );

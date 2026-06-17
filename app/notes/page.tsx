@@ -93,14 +93,18 @@ export default function NotesPage() {
               </p>
 
               <div className="space-y-2 text-sm">
-                <div className="flex gap-2">
-                  <Badge variant="danger">내 답</Badge>
+                <div className="flex items-start gap-2">
+                  <Badge variant="danger" className="shrink-0">
+                    내 답
+                  </Badge>
                   <span className="text-slate-600">
                     {mine || "(선택 없음)"}
                   </span>
                 </div>
-                <div className="flex gap-2">
-                  <Badge variant="success">정답</Badge>
+                <div className="flex items-start gap-2">
+                  <Badge variant="success" className="shrink-0">
+                    정답
+                  </Badge>
                   <span className="text-slate-600">{correct || "-"}</span>
                 </div>
               </div>
@@ -113,7 +117,13 @@ export default function NotesPage() {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <Button onClick={() => router.push("/quiz/play")}>다시 풀기</Button>
+                <Button
+                  onClick={() =>
+                    router.push(`/quiz/play?ids=${note.questionId}`)
+                  }
+                >
+                  다시 풀기
+                </Button>
                 <Button
                   variant="secondary"
                   onClick={() => removeWrongNote(note.questionId)}

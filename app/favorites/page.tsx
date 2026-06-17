@@ -100,8 +100,10 @@ export default function FavoritesPage() {
                 {q.question}
               </p>
 
-              <div className="flex gap-2 text-sm">
-                <Badge variant="success">정답</Badge>
+              <div className="flex items-start gap-2 text-sm">
+                <Badge variant="success" className="shrink-0">
+                  정답
+                </Badge>
                 <span className="text-slate-600">{correct || "-"}</span>
               </div>
 

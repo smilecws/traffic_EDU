@@ -1,4 +1,4 @@
-import type { SessionResult, UserStats } from "@/lib/types";
+import type { UserStats } from "@/lib/types";
 import { getItem, setItem } from "@/lib/utils/storage";
 
 const STATS_KEY = "quiz:stats";
@@ -14,15 +14,24 @@ export function getStats(): UserStats {
   return getItem<UserStats>(STATS_KEY, EMPTY_STATS);
 }
 
-/** 세션 결과를 누적 통계에 반영한다 (localStorage). */
-export function recordSession(result: SessionResult): void {
+/**
+ * 한 문제 채점 결과를 누적 통계에 즉시 반영한다 (문제당 호출).
+ * 세션 완료를 기다리지 않으므로 중간에 그만둬도 푼 만큼 집계된다.
+ */
+export function recordAnswer(correct: boolean): void {
   const prev = getStats();
+  setItem(STATS_KEY, {
+    ...prev,
+    totalAnswered: prev.totalAnswered + 1,
+    totalCorrect: prev.totalCorrect + (correct ? 1 : 0),
+  });
+}
 
-  const next: UserStats = {
-    totalSessions: prev.totalSessions + 1,
-    totalAnswered: prev.totalAnswered + result.total,
-    totalCorrect: prev.totalCorrect + result.correctCount,
-  };
-
-  setItem(STATS_KEY, next);
+/**
+ * 세션 완료 횟수만 +1 한다 (문제별 정답/오답 집계는 recordAnswer가 담당).
+ * 결과 화면에서 세션당 1회 호출(멱등 가드는 호출측 책임).
+ */
+export function recordSessionComplete(): void {
+  const prev = getStats();
+  setItem(STATS_KEY, { ...prev, totalSessions: prev.totalSessions + 1 });
 }

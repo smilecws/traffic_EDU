@@ -27,8 +27,24 @@ service cloud.firestore {
         && d.createdAt is timestamp;
     }
 
+    // 익명 답안 로그(세션 요약) — items 내부 원소({q,c})의 깊은 검증은
+    // Firestore 규칙 한계상 강제하지 않는다(익명 데이터 + 추후 App Check로 남용 완화).
+    // 형태(필드/타입)와 items 크기 상한만 검증한다.
+    function isValidAnswerLog() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['items', 'createdAt'])
+        && d.items is list && d.items.size() > 0 && d.items.size() <= 200
+        && d.createdAt is timestamp;
+    }
+
     match /wrong_answer_logs/{docId} {
       allow create: if isValidLog();
+      allow read, update, delete: if false;
+    }
+
+    // 익명 답안 로그(세션 요약) — 생성만 허용, 읽기/수정/삭제 금지.
+    match /answer_logs/{docId} {
+      allow create: if isValidAnswerLog();
       allow read, update, delete: if false;
     }
 

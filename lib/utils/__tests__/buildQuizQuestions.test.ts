@@ -72,6 +72,35 @@ describe("buildQuizQuestions", () => {
     });
   });
 
+  describe("questionIds 지정 (특정 문제만)", () => {
+    it("모드와 무관하게 지정 id만 순서대로 반환", () => {
+      const result = buildQuizQuestions(
+        "random",
+        { all, wrongIds: [], favoriteIds: [] },
+        { questionIds: ["q9", "q3"] },
+      );
+      expect(result.map((q) => q.id)).toEqual(["q9", "q3"]);
+    });
+
+    it("단일 id면 그 문제 1개만", () => {
+      const result = buildQuizQuestions(
+        "random",
+        { all, wrongIds: [], favoriteIds: [] },
+        { questionIds: ["q42"] },
+      );
+      expect(result.map((q) => q.id)).toEqual(["q42"]);
+    });
+
+    it("존재하지 않는 id는 무시", () => {
+      const result = buildQuizQuestions(
+        "random",
+        { all, wrongIds: [], favoriteIds: [] },
+        { questionIds: ["q5", "nope"] },
+      );
+      expect(result.map((q) => q.id)).toEqual(["q5"]);
+    });
+  });
+
   describe("sequential 모드", () => {
     it("startNumber 이상인 문제를 번호 오름차순으로 전부 반환", () => {
       const result = buildQuizQuestions(

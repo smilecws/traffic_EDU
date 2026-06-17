@@ -6,6 +6,8 @@ const SESSION_SIZE = 40;
 
 /**
  * 모드에 따라 세션 문제 목록을 구성하는 순수 함수.
+ * - opts.questionIds 지정 시: **모드와 무관하게** 그 id들만(순서 보존). 오답노트에서
+ *   특정 문제 1개만 다시 풀기 등에 사용. 존재하지 않는 id는 무시.
  * - random | mock: 전체에서 무작위 40개(부족하면 가능한 만큼).
  *   opts.type이 주어지면 해당 유형으로 먼저 거른 뒤 무작위 추출.
  * - sequential: opts.startNumber 이상인 문제를 **번호 오름차순으로 전부**(테스트용).
@@ -19,10 +21,18 @@ const SESSION_SIZE = 40;
 export function buildQuizQuestions(
   mode: QuizMode,
   sources: { all: Question[]; wrongIds: string[]; favoriteIds: string[] },
-  opts: { type?: string; startNumber?: number } = {},
+  opts: { type?: string; startNumber?: number; questionIds?: string[] } = {},
 ): Question[] {
   const { all, wrongIds, favoriteIds } = sources;
-  const { type, startNumber } = opts;
+  const { type, startNumber, questionIds } = opts;
+
+  // 명시적 id 지정 — 모드보다 우선. 지정 순서를 보존하고 없는 id는 무시.
+  if (questionIds && questionIds.length > 0) {
+    const byId = new Map(all.map((q) => [q.id, q]));
+    return questionIds
+      .map((id) => byId.get(id))
+      .filter((q): q is Question => q !== undefined);
+  }
 
   if (mode === "sequential") {
     const start = startNumber ?? 1;

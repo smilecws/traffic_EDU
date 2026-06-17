@@ -86,10 +86,18 @@ export interface WrongAnswerLog {
   selectedIds: number[];
 }
 
-/** 전체 통계: 많이 틀린 문제 1건 (익명 집계 — questionId·오답 횟수만) */
-export interface GlobalWrongEntry {
+/** 익명 답안 로그 항목 (정/오답만, 개인정보·선택지 없음) */
+export interface AnswerLogItem {
+  q: string;
+  c: boolean;
+} // q=questionId, c=correct
+
+/** 전체 통계: 오답률 높은 문제 1건 (익명 집계 — questionId·시도/오답·오답률만) */
+export interface GlobalTopEntry {
   questionId: string;
-  wrongCount: number;
+  attempts: number;
+  wrong: number;
+  wrongRate: number; // 0..1
 }
 
 /**
@@ -98,8 +106,9 @@ export interface GlobalWrongEntry {
  */
 export interface GlobalAggregate {
   updatedAt: string; // ISO8601
-  totalWrongLogs?: number;
-  top: GlobalWrongEntry[]; // 최대 50
+  totalSessions?: number;
+  minAttempts?: number;
+  top: GlobalTopEntry[]; // 최대 50
 }
 
 /** 퀴즈 모드 — 랜덤/오답/즐겨찾기/모의고사/순서대로(번호순) */

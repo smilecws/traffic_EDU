@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import type { Question, WrongAnswerLog } from "@/lib/types";
+import { ArrowLeft } from "lucide-react";
+import type { Question } from "@/lib/types";
 import { useQuestions } from "@/lib/hooks/useQuestions";
 import { useSessionResult } from "@/lib/hooks/useSessionResult";
 import { useStats } from "@/lib/hooks/useStats";
@@ -12,7 +13,7 @@ import {
   isSessionSaved,
   markSessionSaved,
 } from "@/lib/services/sessionResultService";
-import { logWrongAnswers } from "@/lib/services/wrongAnswerLogService";
+import { logAnswers } from "@/lib/services/answerLogService";
 import { addMockResult } from "@/lib/services/mockHistoryService";
 import { getLicense } from "@/lib/data/licenses";
 import { Badge } from "@/components/shared/Badge";
@@ -30,7 +31,7 @@ export default function ResultPage() {
   const { data: questions } = useQuestions();
   // 결과 상세는 퀴즈 페이지가 저장해 둔 것을 id로 조회 (새로고침에도 유지).
   const { data: detail, isLoading: detailLoading } = useSessionResult(id);
-  const { recordSession } = useStats();
+  const { recordSessionComplete } = useStats();
   const { addWrongNote } = useWrongNotes();
   const { data: favorites, toggleFavorite } = useFavorites();
 
@@ -45,8 +46,8 @@ export default function ResultPage() {
 
     const wrongs = detail.results.filter((r) => !r.correct);
 
-    // 개인 통계 누적 (localStorage, hook → invalidate)
-    recordSession(detail.result);
+    // 세션 완료 횟수만 +1 (문제별 정답/오답은 풀이 중 recordAnswer로 이미 누적됨).
+    recordSessionComplete();
 
     // 오답 → 오답노트 (localStorage)
     for (const w of wrongs) {
@@ -57,12 +58,9 @@ export default function ResultPage() {
       });
     }
 
-    // 오답 → 익명 집계 (Firestore, best-effort). 개인 식별 정보 없음.
-    const logs: WrongAnswerLog[] = wrongs.map((w) => ({
-      questionId: w.questionId,
-      selectedIds: w.selectedIds,
-    }));
-    void logWrongAnswers(logs);
+    // 답한 문제 → 익명 집계 (Firestore, best-effort). 오답률 산출용 전체 시도 기록.
+    // 개인 식별 정보 없음. 미응답(빈 선택)은 logAnswers 내부에서 제외한다.
+    void logAnswers(detail.results);
 
     // 모의고사면 이력에도 1회 기록 (멱등 가드 안 → 새로고침 중복 방지, localStorage 전용).
     const meta = detail.meta;
@@ -83,7 +81,7 @@ export default function ResultPage() {
     }
 
     markSessionSaved(detail.result.id);
-  }, [detail, questions, recordSession, addWrongNote]);
+  }, [detail, questions, recordSessionComplete, addWrongNote]);
 
   if (detailLoading || !questions) {
     return (
@@ -129,6 +127,19 @@ export default function ResultPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-12 px-4 py-12 md:px-6">
+      {/* 뒤로가기 — 히스토리 pop(연 화면으로 복귀). 끝난 퀴즈는 replace로 진입해
+          뒤로가기 시 풀이 화면이 아니라 그 이전(허브/이력)으로 간다. */}
+      <div className="-mb-6 flex items-center">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          aria-label="뒤로"
+          className="-ml-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-700 transition-colors hover:bg-[#f5f4fb]"
+        >
+          <ArrowLeft size={24} strokeWidth={1.5} />
+        </button>
+      </div>
+
       {/* 모의고사 합격/불합격 배너 */}
       {isMock && (
         <Card
@@ -239,14 +250,18 @@ export default function ResultPage() {
                     {q.question}
                   </p>
                   <div className="space-y-2 text-sm">
-                    <div className="flex gap-2">
-                      <Badge variant="danger">내 답</Badge>
+                    <div className="flex items-start gap-2">
+                      <Badge variant="danger" className="shrink-0">
+                        내 답
+                      </Badge>
                       <span className="text-slate-600">
                         {mine || "(선택 없음)"}
                       </span>
                     </div>
-                    <div className="flex gap-2">
-                      <Badge variant="success">정답</Badge>
+                    <div className="flex items-start gap-2">
+                      <Badge variant="success" className="shrink-0">
+                        정답
+                      </Badge>
                       <span className="text-slate-600">{correct || "-"}</span>
                     </div>
                   </div>
@@ -267,8 +282,8 @@ export default function ResultPage() {
       {/* 액션 */}
       <section className="flex flex-wrap gap-3">
         <Button onClick={() => router.push("/quiz/play")}>다시 풀기</Button>
-        <Button variant="secondary" onClick={() => router.push("/")}>
-          홈
+        <Button variant="secondary" onClick={() => router.push("/quiz")}>
+          문제 풀기
         </Button>
         <Button variant="secondary" onClick={() => router.push("/notes")}>
           오답노트 보기

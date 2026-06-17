@@ -1,4 +1,4 @@
-import type { GlobalAggregate } from "@/lib/types";
+import type { GlobalAggregate, GlobalTopEntry } from "@/lib/types";
 import { getItem, setItem } from "@/lib/utils/storage";
 
 /** 집계 캐시 localStorage 키 (body + fetchedAt). */
@@ -23,6 +23,25 @@ function isValidAggregate(value: unknown): value is GlobalAggregate {
 }
 
 /**
+ * top 항목을 안전한 형태로 정규화한다.
+ * 과도기 방어: 집계 갱신 전 항목엔 attempts/wrong/wrongRate가 없을 수 있다.
+ * questionId가 없는 항목은 건너뛰고, 나머지 수치는 누락 시 0으로 보정한다.
+ */
+function normalizeAggregate(body: GlobalAggregate): GlobalAggregate {
+  const top: GlobalTopEntry[] = [];
+  for (const raw of body.top) {
+    if (!raw || typeof raw.questionId !== "string") continue;
+    top.push({
+      questionId: raw.questionId,
+      attempts: typeof raw.attempts === "number" ? raw.attempts : 0,
+      wrong: typeof raw.wrong === "number" ? raw.wrong : 0,
+      wrongRate: typeof raw.wrongRate === "number" ? raw.wrongRate : 0,
+    });
+  }
+  return { ...body, top };
+}
+
+/**
  * 전체 사용자 오답 집계(aggregates.json)를 로드한다.
  *
  * - URL은 `NEXT_PUBLIC_AGGREGATE_URL`. 미설정이면 즉시 `null`(파이프라인 미구성 — 앱은 정상 동작).
@@ -40,7 +59,7 @@ export async function loadGlobalAggregate(): Promise<GlobalAggregate | null> {
 
   // 1. 신선한 캐시면 그대로 반환.
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    if (isValidAggregate(cached.body)) return cached.body;
+    if (isValidAggregate(cached.body)) return normalizeAggregate(cached.body);
   }
 
   // 2. fetch 시도.
@@ -50,13 +69,14 @@ export async function loadGlobalAggregate(): Promise<GlobalAggregate | null> {
       const body: unknown = await res.json();
       if (!isValidAggregate(body)) return null;
       setItem<CacheEntry>(CACHE_KEY, { body, fetchedAt: Date.now() });
-      return body;
+      return normalizeAggregate(body);
     }
   } catch {
     // 네트워크 실패 — 폴백으로 진행.
   }
 
   // 3. 만료된 캐시라도 폴백, 없으면 null.
-  if (cached && isValidAggregate(cached.body)) return cached.body;
+  if (cached && isValidAggregate(cached.body))
+    return normalizeAggregate(cached.body);
   return null;
 }

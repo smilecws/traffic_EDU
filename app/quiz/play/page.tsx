@@ -1,11 +1,20 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { useQuizSession } from "@/lib/hooks/useQuizSession";
 import { useFavorites } from "@/lib/hooks/useFavorites";
+import { useStats } from "@/lib/hooks/useStats";
 import { useCountdown } from "@/lib/hooks/useCountdown";
+import { isAnswerCorrect } from "@/lib/utils/calculateScore";
 import { useAppStore } from "@/lib/store/appStore";
 import { saveSessionResult } from "@/lib/services/sessionResultService";
 import { getLicense, MOCK_DURATION_MS } from "@/lib/data/licenses";
@@ -45,6 +54,13 @@ function QuizPlayInner() {
   // 순서대로 풀기 — 시작 문제 번호. sequential 모드에서만 사용.
   const startParam = searchParams.get("start");
   const startNumber = startParam ? Number(startParam) : undefined;
+  // 특정 문제만 풀기 — 오답노트에서 "해당 문제만 다시 풀기" 등. 모드보다 우선.
+  // 매 렌더 새 배열이 effect를 재실행시키지 않도록 idsParam 기준으로 메모이즈.
+  const idsParam = searchParams.get("ids");
+  const questionIds = useMemo(
+    () => (idsParam ? idsParam.split(",").filter(Boolean) : undefined),
+    [idsParam],
+  );
   const isMock = mode === "mock";
 
   const {
@@ -60,6 +76,7 @@ function QuizPlayInner() {
     finish,
   } = useQuizSession();
   const { data: favorites, toggleFavorite } = useFavorites();
+  const { recordAnswer } = useStats();
   const setQuizInProgress = useAppStore((s) => s.setQuizInProgress);
 
   /** 현재 문제에서 고른 선택지 목록 (복수 선택). */
@@ -74,9 +91,17 @@ function QuizPlayInner() {
     if (startedRef.current) return;
     startedRef.current = true;
     setQuizInProgress(true);
-    void startSession({ mode, license, type, startNumber });
+    void startSession({ mode, license, type, startNumber, questionIds });
     return () => setQuizInProgress(false);
-  }, [startSession, setQuizInProgress, mode, license, type, startNumber]);
+  }, [
+    startSession,
+    setQuizInProgress,
+    mode,
+    license,
+    type,
+    startNumber,
+    questionIds,
+  ]);
 
   // 채점 후 결과 페이지로 이동 (정상 완료/시간 초과 공용, 멱등 가드).
   // mock은 미응답을 오답으로 채워 분모=전체 문제 수가 되게 한다.
@@ -84,9 +109,10 @@ function QuizPlayInner() {
   const completeSession = useCallback(() => {
     if (finishedRef.current) return;
     finishedRef.current = true;
-    const result = isMock ? finish({ fillUnansweredAsWrong: true }) : finish();
+    const finished = isMock ? finish({ fillUnansweredAsWrong: true }) : finish();
     setQuizInProgress(false);
-    if (result && session) {
+    if (finished) {
+      const { result, results } = finished;
       const meta: SessionMeta = isMock
         ? {
             mode: "mock",
@@ -95,10 +121,13 @@ function QuizPlayInner() {
             durationMs: MOCK_DURATION_MS,
           }
         : { mode };
-      saveSessionResult({ result, results: session.results, meta });
-      router.push(`/result/${result.id}`);
+      // finish()가 반환한 results(미응답 채움 포함)를 저장 → 오답노트/집계 누락 방지.
+      saveSessionResult({ result, results, meta });
+      // replace로 진입 — 끝난 퀴즈는 히스토리에 남기지 않아, 결과에서 뒤로가기 시
+      // 풀이 화면으로 되돌아가지 않고 그 이전(허브/오답노트 등)으로 간다.
+      router.replace(`/result/${result.id}`);
     }
-  }, [isMock, finish, setQuizInProgress, session, license, mode, router]);
+  }, [isMock, finish, setQuizInProgress, license, mode, router]);
 
   // 마지막 문제까지 답하면 채점/이동.
   useEffect(() => {
@@ -174,10 +203,11 @@ function QuizPlayInner() {
     );
   };
 
-  // 제출 → 채점(hook이 담당) 후 피드백 표시.
+  // 제출 → 채점(hook이 담당) 후 피드백 표시. 개인 통계는 문제당 즉시 누적.
   const handleSubmit = () => {
     if (selectedIds.length === 0) return;
     answer(currentQuestion.id, selectedIds);
+    recordAnswer(isAnswerCorrect(selectedIds, currentQuestion.answerIds));
     setSubmitted(true);
   };
 
@@ -190,15 +220,19 @@ function QuizPlayInner() {
 
   // 모의고사: 즉시 채점/피드백 없이 답만 기록하고 다음으로(실전 방식).
   // 채점·해설은 마지막에 결과 화면에서 한 번에 본다. 미선택이면 그냥 건너뜀(미응답).
+  // 답한 문제만 개인 통계에 누적(미응답은 집계 제외).
   const handleMockNext = () => {
-    if (selectedIds.length > 0) answer(currentQuestion.id, selectedIds);
+    if (selectedIds.length > 0) {
+      answer(currentQuestion.id, selectedIds);
+      recordAnswer(isAnswerCorrect(selectedIds, currentQuestion.answerIds));
+    }
     next();
     setSelectedIds([]);
   };
 
   // 풀이 중 나가기. 모의고사는 응시가 무효화되므로 확인 후 나간다.
   // router.back()은 방문 기록에 의존해 기록이 얕으면(모바일 딥링크/새 탭/PWA)
-  // 사이트 밖으로 나가버린다. 기록과 무관하게 항상 홈으로 가도록 replace 사용.
+  // 사이트 밖으로 나가버린다. 기록과 무관하게 항상 문제 풀기 허브로 가도록 replace 사용.
   // (push 대신 replace → 현재 항목을 교체하므로 뒤로가기로 퀴즈에 되돌아오는 루프도 없음)
   const handleExit = () => {
     if (isMock) {
@@ -208,7 +242,7 @@ function QuizPlayInner() {
       if (!ok) return;
     }
     setQuizInProgress(false);
-    router.replace("/");
+    router.replace("/quiz");
   };
 
   return (
