@@ -188,9 +188,18 @@ function QuizPlayInner() {
     setSubmitted(false);
   };
 
+  // 모의고사: 즉시 채점/피드백 없이 답만 기록하고 다음으로(실전 방식).
+  // 채점·해설은 마지막에 결과 화면에서 한 번에 본다. 미선택이면 그냥 건너뜀(미응답).
+  const handleMockNext = () => {
+    if (selectedIds.length > 0) answer(currentQuestion.id, selectedIds);
+    next();
+    setSelectedIds([]);
+  };
+
   // 풀이 중 나가기. 모의고사는 응시가 무효화되므로 확인 후 나간다.
-  // router.push 대신 back()으로 히스토리에서 한 칸 빼야 진입 화면으로 깔끔히
-  // 돌아간다(push하면 항목이 쌓여 뒤로가기 시 퀴즈로 되돌아오는 루프 발생).
+  // router.back()은 방문 기록에 의존해 기록이 얕으면(모바일 딥링크/새 탭/PWA)
+  // 사이트 밖으로 나가버린다. 기록과 무관하게 항상 홈으로 가도록 replace 사용.
+  // (push 대신 replace → 현재 항목을 교체하므로 뒤로가기로 퀴즈에 되돌아오는 루프도 없음)
   const handleExit = () => {
     if (isMock) {
       const ok = window.confirm(
@@ -199,11 +208,11 @@ function QuizPlayInner() {
       if (!ok) return;
     }
     setQuizInProgress(false);
-    router.back();
+    router.replace("/");
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8 md:px-6">
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-4 py-8 md:px-6">
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -240,7 +249,12 @@ function QuizPlayInner() {
       />
 
       <div className="flex justify-end gap-3">
-        {submitted ? (
+        {isMock ? (
+          // 모의고사: 제출/피드백 없이 답만 기록하고 진행. 채점은 결과 화면에서.
+          <Button onClick={handleMockNext}>
+            {isLast ? "제출하고 결과 보기" : "다음 문제"}
+          </Button>
+        ) : submitted ? (
           <Button onClick={handleNext}>
             {isLast ? "결과 보기" : "다음 문제"}
           </Button>

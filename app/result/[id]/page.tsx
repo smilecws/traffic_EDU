@@ -7,6 +7,7 @@ import { useQuestions } from "@/lib/hooks/useQuestions";
 import { useSessionResult } from "@/lib/hooks/useSessionResult";
 import { useStats } from "@/lib/hooks/useStats";
 import { useWrongNotes } from "@/lib/hooks/useWrongNotes";
+import { useFavorites } from "@/lib/hooks/useFavorites";
 import {
   isSessionSaved,
   markSessionSaved,
@@ -19,6 +20,7 @@ import { Button } from "@/components/shared/Button";
 import { Card } from "@/components/shared/Card";
 import { ProgressBar } from "@/components/shared/ProgressBar";
 import { Spinner } from "@/components/shared/Spinner";
+import { QuizCard } from "@/components/quiz/QuizCard";
 
 export default function ResultPage() {
   const router = useRouter();
@@ -30,6 +32,7 @@ export default function ResultPage() {
   const { data: detail, isLoading: detailLoading } = useSessionResult(id);
   const { recordSession } = useStats();
   const { addWrongNote } = useWrongNotes();
+  const { data: favorites, toggleFavorite } = useFavorites();
 
   // 저장(통계/오답노트/익명 집계)은 세션당 1회만.
   // 멱등성: 저장 완료 세션 id를 localStorage에 기록 → 새로고침 중복 저장 방지.
@@ -92,7 +95,7 @@ export default function ResultPage() {
 
   if (!detail) {
     return (
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-16 md:px-6">
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-4 py-16 md:px-6">
         <h1 className="text-2xl font-bold text-slate-900">
           결과를 찾을 수 없습니다
         </h1>
@@ -109,6 +112,12 @@ export default function ResultPage() {
   const { result, results, meta } = detail;
   const byId = new Map<string, Question>(questions.map((q) => [q.id, q]));
   const wrongs = results.filter((r) => !r.correct);
+  // 모의고사 전체 리뷰 — 문제 번호순 정렬(응시 순서는 보관하지 않으므로).
+  const review = [...results].sort(
+    (a, b) =>
+      (byId.get(a.questionId)?.number ?? 0) -
+      (byId.get(b.questionId)?.number ?? 0),
+  );
 
   // 모의고사 합격/불합격 배너 데이터
   const isMock = meta?.mode === "mock";
@@ -119,7 +128,7 @@ export default function ResultPage() {
     : "";
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-12 px-4 py-12 md:px-6">
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-12 px-4 py-12 md:px-6">
       {/* 모의고사 합격/불합격 배너 */}
       {isMock && (
         <Card
@@ -170,12 +179,38 @@ export default function ResultPage() {
         </Card>
       </section>
 
-      {/* 오답 목록 */}
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-900">
-          오답 {wrongs.length}문제
-        </h2>
-        {wrongs.length === 0 ? (
+      {/* 모의고사: 전체 문제 리뷰 (문제·내 선택·정답·해설). 그 외: 오답 목록만. */}
+      {isMock ? (
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-slate-900">
+            전체 문제 리뷰 {review.length}문제
+          </h2>
+          <div className="space-y-4">
+            {review.map((r) => {
+              const q = byId.get(r.questionId);
+              if (!q) return null;
+              return (
+                <QuizCard
+                  key={r.questionId}
+                  question={q}
+                  selectedIds={r.selectedIds}
+                  submitted
+                  onToggle={() => {}}
+                  isFavorite={
+                    favorites?.some((f) => f.questionId === q.id) ?? false
+                  }
+                  onToggleFavorite={() => toggleFavorite(q.id)}
+                />
+              );
+            })}
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-slate-900">
+            오답 {wrongs.length}문제
+          </h2>
+          {wrongs.length === 0 ? (
           <Card className="border-[#ebe9f5] bg-white">
             <p className="text-sm text-slate-600 leading-relaxed">
               틀린 문제가 없습니다. 완벽합니다!
@@ -225,8 +260,9 @@ export default function ResultPage() {
               );
             })}
           </div>
-        )}
-      </section>
+          )}
+        </section>
+      )}
 
       {/* 액션 */}
       <section className="flex flex-wrap gap-3">
