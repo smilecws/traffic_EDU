@@ -13,6 +13,7 @@ import { ArrowLeft } from "lucide-react";
 import { useQuizSession } from "@/lib/hooks/useQuizSession";
 import { useFavorites } from "@/lib/hooks/useFavorites";
 import { useStats } from "@/lib/hooks/useStats";
+import { useWrongNotes } from "@/lib/hooks/useWrongNotes";
 import { useCountdown } from "@/lib/hooks/useCountdown";
 import { isAnswerCorrect } from "@/lib/utils/calculateScore";
 import { useAppStore } from "@/lib/store/appStore";
@@ -77,6 +78,7 @@ function QuizPlayInner() {
   } = useQuizSession();
   const { data: favorites, toggleFavorite } = useFavorites();
   const { recordAnswer } = useStats();
+  const { addWrongNote } = useWrongNotes();
   const setQuizInProgress = useAppStore((s) => s.setQuizInProgress);
 
   /** 현재 문제에서 고른 선택지 목록 (복수 선택). */
@@ -203,11 +205,25 @@ function QuizPlayInner() {
     );
   };
 
-  // 제출 → 채점(hook이 담당) 후 피드백 표시. 개인 통계는 문제당 즉시 누적.
+  // 한 문제 채점 결과를 개인 통계 + 오답노트에 즉시 반영(문제당).
+  // 세션 완료를 기다리지 않으므로 중간에 나가도 푼 문제는 통계/오답노트에 남는다.
+  const persistAnswer = (selected: number[]) => {
+    const correct = isAnswerCorrect(selected, currentQuestion.answerIds);
+    recordAnswer(correct);
+    if (!correct) {
+      addWrongNote({
+        questionId: currentQuestion.id,
+        selectedIds: selected,
+        addedAt: Date.now(),
+      });
+    }
+  };
+
+  // 제출 → 채점(hook이 담당) 후 피드백 표시. 통계·오답노트는 문제당 즉시 반영.
   const handleSubmit = () => {
     if (selectedIds.length === 0) return;
     answer(currentQuestion.id, selectedIds);
-    recordAnswer(isAnswerCorrect(selectedIds, currentQuestion.answerIds));
+    persistAnswer(selectedIds);
     setSubmitted(true);
   };
 
@@ -220,11 +236,11 @@ function QuizPlayInner() {
 
   // 모의고사: 즉시 채점/피드백 없이 답만 기록하고 다음으로(실전 방식).
   // 채점·해설은 마지막에 결과 화면에서 한 번에 본다. 미선택이면 그냥 건너뜀(미응답).
-  // 답한 문제만 개인 통계에 누적(미응답은 집계 제외).
+  // 답한 문제만 통계·오답노트에 반영(미응답은 제외).
   const handleMockNext = () => {
     if (selectedIds.length > 0) {
       answer(currentQuestion.id, selectedIds);
-      recordAnswer(isAnswerCorrect(selectedIds, currentQuestion.answerIds));
+      persistAnswer(selectedIds);
     }
     next();
     setSelectedIds([]);

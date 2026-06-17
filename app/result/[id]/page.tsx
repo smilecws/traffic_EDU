@@ -7,7 +7,6 @@ import type { Question } from "@/lib/types";
 import { useQuestions } from "@/lib/hooks/useQuestions";
 import { useSessionResult } from "@/lib/hooks/useSessionResult";
 import { useStats } from "@/lib/hooks/useStats";
-import { useWrongNotes } from "@/lib/hooks/useWrongNotes";
 import { useFavorites } from "@/lib/hooks/useFavorites";
 import {
   isSessionSaved,
@@ -32,7 +31,6 @@ export default function ResultPage() {
   // 결과 상세는 퀴즈 페이지가 저장해 둔 것을 id로 조회 (새로고침에도 유지).
   const { data: detail, isLoading: detailLoading } = useSessionResult(id);
   const { recordSessionComplete } = useStats();
-  const { addWrongNote } = useWrongNotes();
   const { data: favorites, toggleFavorite } = useFavorites();
 
   // 저장(통계/오답노트/익명 집계)은 세션당 1회만.
@@ -44,19 +42,8 @@ export default function ResultPage() {
 
     if (isSessionSaved(detail.result.id)) return;
 
-    const wrongs = detail.results.filter((r) => !r.correct);
-
-    // 세션 완료 횟수만 +1 (문제별 정답/오답은 풀이 중 recordAnswer로 이미 누적됨).
+    // 세션 완료 횟수만 +1 (문제별 정답/오답·오답노트는 풀이 중에 이미 기록됨).
     recordSessionComplete();
-
-    // 오답 → 오답노트 (localStorage)
-    for (const w of wrongs) {
-      addWrongNote({
-        questionId: w.questionId,
-        selectedIds: w.selectedIds,
-        addedAt: Date.now(),
-      });
-    }
 
     // 답한 문제 → 익명 집계 (Firestore, best-effort). 오답률 산출용 전체 시도 기록.
     // 개인 식별 정보 없음. 미응답(빈 선택)은 logAnswers 내부에서 제외한다.
@@ -81,7 +68,7 @@ export default function ResultPage() {
     }
 
     markSessionSaved(detail.result.id);
-  }, [detail, questions, recordSessionComplete, addWrongNote]);
+  }, [detail, questions, recordSessionComplete]);
 
   if (detailLoading || !questions) {
     return (

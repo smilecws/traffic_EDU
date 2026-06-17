@@ -4,11 +4,15 @@ import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CONSENT_VERSION,
+  clearConsent,
   getConsent,
   saveConsent,
   type ConsentRecord,
 } from "@/lib/services/consentService";
-import { registerUser } from "@/lib/services/userProfileService";
+import {
+  deleteUserProfile,
+  registerUser,
+} from "@/lib/services/userProfileService";
 import { validateName } from "@/lib/utils/validateName";
 
 const CONSENT_QUERY_KEY = ["consent"];
@@ -23,6 +27,7 @@ export function useConsent(): {
   consent: ConsentRecord | null;
   ready: boolean;
   grant: (name: string) => Promise<void>;
+  withdraw: () => Promise<void>;
 } {
   const queryClient = useQueryClient();
 
@@ -52,9 +57,19 @@ export function useConsent(): {
     [queryClient],
   );
 
+  const withdraw = useCallback(async () => {
+    // 서버 이름 삭제(best-effort) → 로컬 동의 삭제 순으로 데이터만 정리한다.
+    // 게이트 재표시(홈으로 hard reload)는 호출 UI(step 1) 책임 — 여기선
+    // reload/navigation을 하지 않는다.
+    await deleteUserProfile();
+    clearConsent();
+    queryClient.setQueryData(CONSENT_QUERY_KEY, null);
+  }, [queryClient]);
+
   return {
     consent: query.data ?? null,
     ready: query.isFetched,
     grant,
+    withdraw,
   };
 }

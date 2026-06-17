@@ -77,12 +77,16 @@ export default function PrivacyPage() {
         </h2>
         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 leading-relaxed">
           <li>
-            보관 기간: <code>{"{{보관기간 — 운영자 입력 필요}}"}</code> (예:
-            서비스 종료 시까지)
+            보관 기간: <strong>서비스 종료 시까지</strong> (이용자가 동의를
+            철회하면 지체 없이 파기)
           </li>
           <li>
             보관 기간이 경과하거나 처리 목적이 달성되면 해당 개인정보를 지체 없이
             파기합니다.
+          </li>
+          <li>
+            파기 방법: 전자적 파일 형태의 개인정보는 복구·재생이 불가능한 방법으로
+            삭제합니다.
           </li>
         </ul>
       </section>
@@ -90,7 +94,7 @@ export default function PrivacyPage() {
       {/* 4. 제3자 제공 및 처리위탁 */}
       <section className="rounded-2xl bg-white border border-[#ebe9f5] p-5 shadow-sm space-y-3">
         <h2 className="text-base font-semibold text-slate-900">
-          4. 개인정보의 제3자 제공 및 처리위탁
+          4. 개인정보의 제3자 제공·처리위탁 및 국외 이전
         </h2>
         <p className="text-sm text-slate-600 leading-relaxed">
           본 서비스는 다음과 같이 개인정보 처리를 위탁합니다.
@@ -116,6 +120,30 @@ export default function PrivacyPage() {
         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 leading-relaxed">
           <li>위탁 업무 수행 목적 외의 개인정보 처리를 금지하고 있습니다.</li>
           <li>위 수탁자 외 제3자에게 개인정보를 제공하지 않습니다.</li>
+        </ul>
+
+        <h3 className="pt-2 text-sm font-semibold text-slate-900">
+          개인정보의 국외 이전
+        </h3>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          위 수탁자(Google LLC)의 데이터센터 위치에 따라, 수집한 이름이 국외로
+          이전·보관될 수 있습니다. 「개인정보 보호법」 제28조의8에 따라 다음과 같이
+          알립니다.
+        </p>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 leading-relaxed">
+          <li>이전받는 자: Google LLC (Firebase / Google Cloud Platform)</li>
+          <li>
+            이전되는 국가: Firebase(Firestore) 리전에 따른 Google 데이터센터
+            소재국(예: 미국)
+          </li>
+          <li>이전 일시 및 방법: 서비스 이용(동의) 시점에 정보통신망을 통한 전송</li>
+          <li>이전 항목: 이름(닉네임 가능)</li>
+          <li>이전받는 자의 이용 목적: 개인정보(이름) 데이터 저장 및 인프라 운영</li>
+          <li>보유·이용 기간: 서비스 종료 시 또는 동의 철회 시까지</li>
+          <li>
+            거부 방법 및 효과: 이용자는 국외 이전에 대한 동의를 거부할 수 있으나,
+            거부 시 서비스 이용이 제한됩니다.
+          </li>
         </ul>
       </section>
 
@@ -179,9 +207,15 @@ export default function PrivacyPage() {
           8. 개인정보 보호책임자 및 문의처
         </h2>
         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 leading-relaxed">
+          <li>개인정보 보호책임자: 서비스 운영자(대표자)</li>
           <li>
-            개인정보 보호책임자/문의처:{" "}
-            <code>{"{{담당자 연락처 — 운영자 입력 필요}}"}</code>
+            문의·요청처(열람·정정·삭제·처리정지):{" "}
+            <a
+              href="mailto:smilecws@gmail.com"
+              className="font-medium text-violet-600 hover:text-violet-700"
+            >
+              smilecws@gmail.com
+            </a>
           </li>
         </ul>
       </section>

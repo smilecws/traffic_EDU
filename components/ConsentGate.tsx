@@ -82,6 +82,10 @@ export function ConsentGate({
             서비스 이용자 수 파악
           </li>
           <li>
+            <span className="font-medium text-slate-700">보유·이용 기간</span> —
+            서비스 종료 시까지 (동의 철회 시 지체 없이 파기)
+          </li>
+          <li>
             <span className="font-medium text-slate-700">거부 권리</span> —
             동의를 거부할 수 있으나, 거부 시 서비스 이용이 제한됩니다.
           </li>

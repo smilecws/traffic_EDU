@@ -48,12 +48,14 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
-    // 사용자 이름(동의 기반) — 본인 익명 uid 문서만 생성/갱신, 읽기/삭제 금지.
+    // 사용자 이름(동의 기반) — 본인 익명 uid 문서만 생성/갱신, 읽기 금지.
     match /app_users/{userId} {
       allow create, update: if request.auth != null
         && request.auth.uid == userId
         && isValidProfile();
-      allow read, delete: if false;
+      // 본인만 자기 문서 삭제 가능(동의 철회). 읽기는 여전히 금지.
+      allow delete: if request.auth != null && request.auth.uid == userId;
+      allow read: if false;
     }
 
     // 그 외 모든 문서 차단

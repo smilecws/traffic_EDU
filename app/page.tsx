@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BookOpen,
@@ -10,14 +11,31 @@ import {
   GraduationCap,
   ListOrdered,
   MoreVertical,
+  ShieldCheck,
+  UserX,
 } from "lucide-react";
 import { MenuCard } from "@/components/shared/MenuCard";
 import { ExternalLinkRow } from "@/components/shared/ExternalLinkRow";
+import { BottomSheet } from "@/components/shared/BottomSheet";
+import { OptionRow } from "@/components/shared/OptionRow";
+import { useConsent } from "@/lib/hooks/useConsent";
 
 const iconProps = { size: 24, strokeWidth: 1.5 } as const;
 
 export default function Home() {
   const router = useRouter();
+  const { withdraw } = useConsent();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const handleWithdraw = async () => {
+    const confirmed = window.confirm(
+      "개인정보 제공·이용 동의를 철회할까요?\n수집된 이름이 삭제되고, 계속 이용하려면 다시 동의해야 합니다.",
+    );
+    if (!confirmed) return;
+    // step 0: 서버 이름 삭제 + 로컬 동의 삭제. 이후 하드 리로드로 동의 게이트 재표시.
+    await withdraw();
+    window.location.assign("/");
+  };
 
   return (
     <main className="mx-auto w-full max-w-md px-4 py-6 space-y-6">
@@ -30,6 +48,7 @@ export default function Home() {
         <button
           type="button"
           aria-label="더보기"
+          onClick={() => setMenuOpen(true)}
           className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#ebe9f5] bg-white text-slate-400"
         >
           <MoreVertical size={20} strokeWidth={1.5} />
@@ -91,6 +110,40 @@ export default function Home() {
           />
         </div>
       </section>
+
+      {/* ⋮ 설정 메뉴 */}
+      <BottomSheet
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title="설정"
+      >
+        <div className="space-y-2.5">
+          <OptionRow
+            icon={<ShieldCheck {...iconProps} />}
+            color="indigo"
+            title="개인정보처리방침"
+            subtitle="수집 항목과 처리 방침 보기"
+            onClick={() => router.push("/privacy")}
+          />
+          <button
+            type="button"
+            onClick={handleWithdraw}
+            className="flex w-full items-center gap-3 rounded-2xl border border-[#ebe9f5] bg-white p-4 text-left transition-shadow hover:shadow-md"
+          >
+            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+              <UserX {...iconProps} />
+            </span>
+            <div className="flex-1">
+              <p className="text-base font-semibold text-red-600">
+                개인정보 제공·이용 철회
+              </p>
+              <p className="text-sm text-slate-500">
+                수집된 이름 삭제 · 재동의 필요
+              </p>
+            </div>
+          </button>
+        </div>
+      </BottomSheet>
     </main>
   );
 }
