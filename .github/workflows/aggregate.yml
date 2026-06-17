@@ -1,0 +1,57 @@
+name: aggregate-wrong-answers
+
+# wrong_answer_logs(Firestore, 익명) → questionId별 오답 Top 50 집계 →
+# aggregates.json 을 data-aggregates 전용 브랜치에 publish.
+# 앱 소스 브랜치(main 등)와 분리해 집계 갱신이 앱 재배포를 트리거하지 않게 한다.
+
+on:
+  schedule:
+    # 매일 1회 (UTC 18:00 ≈ KST 03:00)
+    - cron: "0 18 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install tool dependencies
+        run: npm install
+        working-directory: tool
+
+      - name: Run aggregation
+        run: node aggregate.mjs
+        working-directory: tool
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Publish aggregates.json to data-aggregates branch
+        run: |
+          set -euo pipefail
+          test -f aggregates.json
+
+          # 집계 산출물만 별도 디렉터리로 옮겨 보관 (소스 트리와 격리)
+          mkdir -p /tmp/publish
+          cp aggregates.json /tmp/publish/aggregates.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # data-aggregates 브랜치를 단일 파일만 담은 orphan 브랜치로 재작성.
+          # 소스 히스토리를 오염시키지 않도록 매번 깨끗한 트리에서 커밋한다.
+          git switch --orphan data-aggregates
+          git rm -rfq --cached . || true
+          cp /tmp/publish/aggregates.json aggregates.json
+          git add aggregates.json
+          git commit -m "chore(data): update aggregates.json"
+          git push --force origin data-aggregates

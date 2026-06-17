@@ -1,0 +1,13 @@
+{
+  "name": "quiz-app-aggregate-tool",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "wrong_answer_logs를 읽어 '많이 틀린 문제 Top 50'(aggregates.json)을 산출하는 독립 집계 도구",
+  "scripts": {
+    "aggregate": "node aggregate.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2"
+  }
+}

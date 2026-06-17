@@ -1,0 +1,48 @@
+rules_version = '2';
+
+// 익명 오답 집계 전용 보안 규칙.
+// 인증이 없으므로(로그인 미사용) 이 규칙이 유일한 방어선이다.
+// - wrong_answer_logs: 생성(create)만 허용, 읽기/수정/삭제 전면 금지.
+//   문서 형태를 엄격히 검증해 임의 필드/타입 주입을 막는다.
+// - 그 외 모든 경로: 전면 차단.
+//
+// 콘솔 적용: Firebase Console → Firestore Database → 규칙 탭에 붙여넣고 게시.
+// (개인 식별 정보는 절대 기록하지 않는다 — questionId/selectedIds/createdAt만)
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidLog() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['questionId', 'selectedIds', 'createdAt'])
+        && d.questionId is string && d.questionId.size() <= 64
+        && d.selectedIds is list
+        && d.createdAt is timestamp;
+    }
+
+    function isValidProfile() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['name', 'createdAt'])
+        && d.name is string && d.name.size() >= 2 && d.name.size() <= 30
+        && d.createdAt is timestamp;
+    }
+
+    match /wrong_answer_logs/{docId} {
+      allow create: if isValidLog();
+      allow read, update, delete: if false;
+    }
+
+    // 사용자 이름(동의 기반) — 본인 익명 uid 문서만 생성/갱신, 읽기/삭제 금지.
+    match /app_users/{userId} {
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && isValidProfile();
+      allow read, delete: if false;
+    }
+
+    // 그 외 모든 문서 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
