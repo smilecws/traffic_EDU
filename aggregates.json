@@ -1,0 +1,13 @@
+{
+  "updatedAt": "2026-07-01T20:03:45.338Z",
+  "totalSessions": 1,
+  "minAttempts": 1,
+  "top": [
+    {
+      "questionId": "DIAG",
+      "attempts": 1,
+      "wrong": 0,
+      "wrongRate": 0
+    }
+  ]
+}
