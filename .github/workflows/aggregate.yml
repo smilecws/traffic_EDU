@@ -6,8 +6,8 @@ name: aggregate-wrong-answers
 
 on:
   schedule:
-    # 매일 1회 (UTC 18:00 ≈ KST 03:00)
-    - cron: "0 18 * * *"
+    # 매일 1회 (UTC 21:00 = KST 06:00)
+    - cron: "0 21 * * *"
   workflow_dispatch: {}
 
 permissions:

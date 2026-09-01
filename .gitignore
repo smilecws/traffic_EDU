@@ -43,6 +43,8 @@ next-env.d.ts
 tool/node_modules/
 tool/key.json
 /aggregates.json
+/exam-board-state.json
+/changes.md
 .pytest_cache/
 
 # Firebase

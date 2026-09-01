@@ -1,0 +1,83 @@
+name: exam-board-watch
+
+# 한국도로교통공단 "학과시험 문제[한국어]" 게시판을 매일 확인해
+# 글ID·제목·등록일이 바뀌면 GitHub 이슈를 생성한다(= 저장소 소유자에게 메일 발송).
+#
+# 상태(exam-board-state.json)는 exam-board-state 전용 orphan 브랜치에 보관한다.
+# 앱 소스 브랜치(main)와 분리해 상태 갱신이 앱 재배포를 트리거하지 않게 한다.
+
+on:
+  schedule:
+    # 매일 1회 (UTC 21:00 = KST 06:00)
+    - cron: "0 21 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Fetch previous state
+        run: |
+          set -euo pipefail
+          # 최초 실행이면 브랜치가 없다 — 그 경우 이전 상태 없이 기준선만 기록한다.
+          if git fetch origin exam-board-state --depth 1 2>/dev/null; then
+            git show origin/exam-board-state:exam-board-state.json > /tmp/prev.json
+            echo "이전 상태 확보"
+          else
+            echo "exam-board-state 브랜치 없음 — 최초 실행"
+          fi
+
+      - name: Check board
+        id: check
+        run: |
+          set -euo pipefail
+          node tool/check-exam-board.mjs /tmp/prev.json
+          if [ -f changes.md ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create issue on change
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh issue create \
+            --title "학과시험 문제은행 게시판 변경 감지 ($(TZ=Asia/Seoul date +%Y-%m-%d))" \
+            --body-file changes.md \
+            --assignee "${{ github.repository_owner }}"
+
+      - name: Publish state to exam-board-state branch
+        run: |
+          set -euo pipefail
+          test -f exam-board-state.json
+
+          # 상태 파일만 별도 디렉터리로 옮겨 보관 (소스 트리와 격리)
+          mkdir -p /tmp/publish
+          cp exam-board-state.json /tmp/publish/exam-board-state.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # exam-board-state 브랜치를 단일 파일만 담은 orphan 브랜치로 재작성.
+          # 소스 히스토리를 오염시키지 않도록 매번 깨끗한 트리에서 커밋한다.
+          git switch --orphan exam-board-state
+          git rm -rfq --cached . || true
+          cp /tmp/publish/exam-board-state.json exam-board-state.json
+          git add exam-board-state.json
+          git commit -m "chore(data): update exam-board-state.json"
+          git push --force origin exam-board-state
