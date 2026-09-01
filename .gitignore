@@ -44,3 +44,8 @@ tool/node_modules/
 tool/key.json
 /aggregates.json
 .pytest_cache/
+
+# Firebase
+firebase-debug.log
+*-debug.log
+.firebase/

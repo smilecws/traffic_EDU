@@ -80,12 +80,6 @@ export interface Favorite {
   addedAt: number;
 }
 
-/** 익명 오답 집계 로그 (Firestore — 개인 식별 정보 없음) */
-export interface WrongAnswerLog {
-  questionId: string;
-  selectedIds: number[];
-}
-
 /** 익명 답안 로그 항목 (정/오답만, 개인정보·선택지 없음) */
 export interface AnswerLogItem {
   q: string;
