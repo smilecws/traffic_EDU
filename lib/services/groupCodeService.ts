@@ -85,11 +85,21 @@ export function captureGroupCodeFromSearch(search: string): string | null {
   }
 }
 
-/** 교육생에게 배포할 공유 링크를 만든다. */
-export function buildGroupLink(origin: string, code: string): string {
+/**
+ * 교육생에게 배포할 공유 링크를 만든다.
+ *
+ * `survey`를 켜면 `&s=1`이 붙어, 그 링크로 들어온 기기의 홈 화면에만 만족도
+ * 조사 버튼이 뜬다(surveyService가 캡처한다). 끈 회차에는 아무 변화도 없다.
+ */
+export function buildGroupLink(
+  origin: string,
+  code: string,
+  options: { survey?: boolean } = {},
+): string {
   const normalized = normalizeGroupCode(code);
   if (!normalized) return origin;
-  return `${origin.replace(/\/$/, "")}/?${QUERY_KEY}=${normalized}`;
+  const base = `${origin.replace(/\/$/, "")}/?${QUERY_KEY}=${normalized}`;
+  return options.survey ? `${base}&s=1` : base;
 }
 
 /* ------------------------------------------------------------------ *
@@ -214,6 +224,9 @@ const ISSUED_KEY = "quiz:adminIssuedCodes";
 /** 마지막 지점 입력값 localStorage 키. */
 const BRANCH_KEY = "quiz:adminBranch";
 
+/** 만족도 조사 체크 상태 localStorage 키(발급 화면 기본값). */
+const SURVEY_FLAG_KEY = "quiz:adminSurvey";
+
 /** 보관할 발급 내역 개수. */
 const ISSUED_LIMIT = 20;
 
@@ -224,6 +237,11 @@ export interface IssuedGroupCode {
   branch: string;
   /** epoch ms */
   issuedAt: number;
+  /**
+   * 만족도 조사를 함께 받는 회차인지. 지난 발급을 다시 눌렀을 때 QR 링크가
+   * 발급 당시와 같아야 하므로 코드와 함께 적어 둔다(예전 기록에는 없어 선택).
+   */
+  survey?: boolean;
 }
 
 /** 발급 내역을 최신순으로 읽는다. */
@@ -256,6 +274,16 @@ export function getAdminBranch(): string {
 /** 지점 입력값을 기억한다. */
 export function saveAdminBranch(branch: string): void {
   setItem(BRANCH_KEY, branch.trim());
+}
+
+/** 만족도 조사 체크 상태(발급 화면 기본값). 같은 강사는 보통 매번 같게 쓴다. */
+export function getAdminSurveyFlag(): boolean {
+  return getItem<boolean>(SURVEY_FLAG_KEY, false) === true;
+}
+
+/** 만족도 조사 체크 상태를 기억한다. */
+export function saveAdminSurveyFlag(enabled: boolean): void {
+  setItem(SURVEY_FLAG_KEY, enabled);
 }
 
 /* ------------------------------------------------------------------ *

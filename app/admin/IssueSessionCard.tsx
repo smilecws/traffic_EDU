@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Ticket } from "lucide-react";
+import { MessageSquareHeart, Ticket } from "lucide-react";
 import {
   getAdminBranch,
+  getAdminSurveyFlag,
   getIssuedCodesServerSnapshot,
   getIssuedCodesSnapshot,
   issueGroupCode,
   normalizeBranchSlug,
   saveAdminBranch,
+  saveAdminSurveyFlag,
   saveIssuedCode,
   subscribeIssuedCodes,
   type IssuedGroupCode,
@@ -45,6 +47,11 @@ export function IssueSessionCard() {
     getAdminBranch,
     () => "",
   );
+  const storedSurvey = useSyncExternalStore(
+    noopSubscribe,
+    getAdminSurveyFlag,
+    () => false,
+  );
   const issued = useSyncExternalStore(
     subscribeIssuedCodes,
     getIssuedCodesSnapshot,
@@ -56,8 +63,20 @@ export function IssueSessionCard() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  /** 만족도 조사 체크. null이면 지난번 설정을 그대로 쓴다. */
+  const [surveyDraft, setSurveyDraft] = useState<boolean | null>(null);
+  const survey = surveyDraft ?? storedSurvey;
+
   const branch = draft ?? storedBranch;
   const slug = normalizeBranchSlug(branch);
+
+  /**
+   * 화면에 뜬 QR이 설문을 포함하는지는 **발급 당시 기록**에서 읽는다.
+   * 지금 체크박스를 켜고 끄는 것이 이미 발급한 QR을 바꿔선 안 된다 —
+   * 교육생이 이미 스캔한 링크와 달라진다.
+   */
+  const shownSurvey =
+    issued.find((entry) => entry.code === code)?.survey ?? false;
 
   function handleIssue() {
     const next = issueGroupCode(branch);
@@ -69,9 +88,11 @@ export function IssueSessionCard() {
       code: next,
       branch: branch.trim(),
       issuedAt: Date.now(),
+      survey,
     };
     saveIssuedCode(entry);
     saveAdminBranch(branch);
+    saveAdminSurveyFlag(survey);
     setCode(next);
     setError(null);
   }
@@ -107,6 +128,26 @@ export function IssueSessionCard() {
           </p>
         )}
 
+        {/* 설문 여부는 발급 시점에 고정된다 — QR 링크에 들어가기 때문이다. */}
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[#ebe9f5] p-3 transition-colors hover:bg-[#f5f4fb]">
+          <input
+            type="checkbox"
+            checked={survey}
+            onChange={(e) => setSurveyDraft(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
+              <MessageSquareHeart size={15} strokeWidth={1.5} />
+              만족도 조사 함께 받기
+            </span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-slate-400">
+              이 QR로 들어온 교육생 화면에 만족도 조사 버튼이 생깁니다. 응답하면
+              버튼이 &ldquo;이미 응답하셨습니다&rdquo;로 바뀝니다.
+            </span>
+          </span>
+        </label>
+
         <Button
           size="lg"
           className="w-full"
@@ -120,7 +161,7 @@ export function IssueSessionCard() {
         {error && <p className="text-sm text-red-500">{error}</p>}
       </Card>
 
-      <GroupLinkCard code={code} />
+      <GroupLinkCard code={code} survey={shownSurvey} />
 
       {issued.length > 0 && (
         <Card className="space-y-2">
@@ -148,6 +189,7 @@ export function IssueSessionCard() {
                     <span className="text-xs text-slate-400">
                       {entry.branch ? `${entry.branch} · ` : ""}
                       {formatIssuedAt(entry.issuedAt)}
+                      {entry.survey ? " · 설문" : ""}
                     </span>
                   </span>
                 </button>

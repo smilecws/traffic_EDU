@@ -16,6 +16,7 @@ import { MenuCard } from "@/components/shared/MenuCard";
 import { ExternalLinkRow } from "@/components/shared/ExternalLinkRow";
 import { BottomSheet } from "@/components/shared/BottomSheet";
 import { OptionRow } from "@/components/shared/OptionRow";
+import { SurveyEntry } from "@/components/survey/SurveyEntry";
 
 const iconProps = { size: 24, strokeWidth: 1.5 } as const;
 
@@ -89,6 +90,13 @@ export default function Home() {
           />
         </div>
       </section>
+
+      {/*
+        만족도 조사 — 설문이 켜진 회차 QR로 들어온 기기에만 나타난다.
+        외부 페이지 섹션 **밖**에 둔다. 내부 기능이므로 그 안에 넣으면
+        공단 페이지로 가는 링크처럼 보인다.
+      */}
+      <SurveyEntry />
 
       {/* ⋮ 설정 메뉴 */}
       <BottomSheet

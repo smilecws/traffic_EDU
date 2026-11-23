@@ -12,6 +12,11 @@ import {
   toCsv,
   type GroupStats,
 } from "@/lib/services/adminStatsService";
+import {
+  loadAllSurveyStats,
+  loadSurveyStats,
+  type SurveyStats,
+} from "@/lib/services/adminSurveyService";
 import type { CalendarDay } from "@/lib/services/adminCalendarService";
 import { DEFAULT_CLASSIFIER } from "@/lib/services/questionClassifier";
 import { useQuestions } from "@/lib/hooks/useQuestions";
@@ -23,6 +28,7 @@ import { cn } from "@/lib/utils/cn";
 import { AdminLogin } from "./AdminLogin";
 import { IssueSessionCard } from "./IssueSessionCard";
 import { SessionCalendar } from "./SessionCalendar";
+import { SurveyResultCard } from "./SurveyResultCard";
 import { WrongQuestionList } from "./WrongQuestionList";
 
 /** 진입 단계. */
@@ -154,10 +160,37 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /** 만족도 집계 — 오답률과 같은 조건으로 함께 불러온다. */
+  const [survey, setSurvey] = useState<SurveyStats | null>(null);
+  const [surveyError, setSurveyError] = useState<string | null>(null);
+
   /** 달력에서 펼쳐 둔 날 — 회차를 아직 고르지 않았을 때 안내를 띄우는 데 쓴다. */
   const [pickedDay, setPickedDay] = useState<CalendarDay | null>(null);
 
   const normalized = normalizeGroupCode(code);
+
+  /**
+   * 만족도 집계를 받아 담는다. 오답률과 **독립적으로** 처리한다 — 설문 쪽이
+   * 실패해도(색인 미생성 등) 오답률 화면까지 같이 죽으면 안 된다.
+   */
+  const receiveSurvey = useCallback(
+    async (pending: Promise<SurveyStats>) => {
+      try {
+        setSurvey(await pending);
+      } catch (err) {
+        if (err instanceof AdminSessionExpiredError) {
+          onSessionExpired();
+          return;
+        }
+        setSurveyError(
+          err instanceof Error
+            ? err.message
+            : "만족도 응답을 불러오지 못했습니다.",
+        );
+      }
+    },
+    [onSessionExpired],
+  );
 
   /**
    * 집계를 불러온다. 달력에서 고른 값으로 바로 조회해야 하는데 setState는
@@ -171,6 +204,9 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
       // 조회가 시작되면 이전 결과를 즉시 버린다 — 낡은 숫자가 남아 있으면
       // 화면이 "안 바뀐 것"처럼 보인다.
       setStats(null);
+      setSurvey(null);
+      setSurveyError(null);
+      void receiveSurvey(loadSurveyStats(params));
       try {
         const result = await loadGroupStats({
           ...params,
@@ -193,7 +229,7 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
         setBusy(false);
       }
     },
-    [questions, onSessionExpired],
+    [questions, onSessionExpired, receiveSurvey],
   );
 
   /**
@@ -206,7 +242,10 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
       setBusy(true);
       setError(null);
       setStats(null);
+      setSurvey(null);
+      setSurveyError(null);
       setPickedDay(null);
+      void receiveSurvey(loadAllSurveyStats(range));
       try {
         const result = await loadAllStats({
           ...range,
@@ -228,7 +267,7 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
         setBusy(false);
       }
     },
-    [questions, onSessionExpired],
+    [questions, onSessionExpired, receiveSurvey],
   );
 
   /**
@@ -655,6 +694,18 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
                     />
                   </section>
                 </>
+              )}
+
+              {/* 만족도 — 오답률과 같은 조건으로 불러온다. */}
+              {survey && <SurveyResultCard survey={survey} today={today} />}
+
+              {surveyError && (
+                <Card>
+                  <p className="text-sm text-slate-600">
+                    만족도 응답을 불러오지 못했습니다.{" "}
+                    <span className="text-slate-400">{surveyError}</span>
+                  </p>
+                </Card>
               )}
             </>
           )}
