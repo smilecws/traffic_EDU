@@ -1,7 +1,10 @@
 "use client";
 
 import { Check } from "lucide-react";
-import type { GroupQuestionStat } from "@/lib/services/adminStatsService";
+import type {
+  GroupQuestionStat,
+  StatsScope,
+} from "@/lib/services/adminStatsService";
 import { Card } from "@/components/shared/Card";
 import { cn } from "@/lib/utils/cn";
 
@@ -15,6 +18,7 @@ import { cn } from "@/lib/utils/cn";
 export function WrongQuestionList({
   questions,
   wrongQuestionCount,
+  scope = "group",
 }: {
   questions: GroupQuestionStat[];
   /**
@@ -22,14 +26,18 @@ export function WrongQuestionList({
    * 목록이 비었을 때 "틀린 게 없다"와 "필터에 걸렸다"를 구분해 안내한다.
    */
   wrongQuestionCount: number;
+  /** 집계 범위 — 빈 목록 안내 문구가 "이 회차"인지 "전체"인지 가른다. */
+  scope?: StatsScope;
 }) {
   if (questions.length === 0) {
     return (
       <Card>
         <p className="text-sm leading-relaxed text-slate-600">
-          {wrongQuestionCount === 0
-            ? "이 회차에서 틀린 문항이 없습니다."
-            : "최소 응답 수 조건에 걸려 표시할 문항이 없습니다. 값을 낮춰 보세요."}
+          {wrongQuestionCount !== 0
+            ? "최소 응답 수 조건에 걸려 표시할 문항이 없습니다. 값을 낮춰 보세요."
+            : scope === "all"
+              ? "틀린 문항이 없습니다."
+              : "이 회차에서 틀린 문항이 없습니다."}
         </p>
       </Card>
     );

@@ -6,6 +6,7 @@ import { normalizeGroupCode } from "@/lib/services/groupCodeService";
 import {
   AdminSessionExpiredError,
   MIN_ATTEMPTS_OPTIONS,
+  loadAllStats,
   loadGroupStats,
   maxUsableMinAttempts,
   toCsv,
@@ -173,6 +174,37 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
     [questions, onSessionExpired],
   );
 
+  /**
+   * 전체 기간·전체 회차 집계. 회차·날짜 조건이 없으므로 달력 선택 상태를 비운다.
+   * 코드 없이 들어온 응답까지 포함된다.
+   */
+  const runLoadAll = useCallback(async () => {
+    if (!questions) return;
+    setBusy(true);
+    setError(null);
+    setStats(null);
+    setPickedDay(null);
+    try {
+      const result = await loadAllStats({
+        questions,
+        classifier: DEFAULT_CLASSIFIER,
+      });
+      setStats(result);
+
+      const usable = maxUsableMinAttempts(result.questions);
+      if (usable !== null) setMinAttempts((prev) => Math.min(prev, usable));
+    } catch (err) {
+      setStats(null);
+      if (err instanceof AdminSessionExpiredError) {
+        onSessionExpired();
+        return;
+      }
+      setError(err instanceof Error ? err.message : "조회에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }, [questions, onSessionExpired]);
+
   /** 달력에서 회차를 고른 경우 — 코드와 날짜를 그 회차로 맞추고 바로 조회한다. */
   const handleCalendarSelect = useCallback(
     (selectedCode: string, date: string) => {
@@ -214,7 +246,10 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `오답률_${stats.code}_${stats.from}_${stats.to}.csv`;
+    a.download =
+      stats.scope === "all"
+        ? `오답률_전체_${today}.csv`
+        : `오답률_${stats.code}_${stats.from}_${stats.to}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -270,8 +305,28 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
 
       {tab === "stats" && (
         <>
+          {/* 회차 비교가 아니라 문제은행 난이도를 볼 때 쓰는 전체 범위 조회. */}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-[#ebe9f5] bg-white px-3 py-2.5">
+            <p className="text-xs leading-relaxed text-slate-500">
+              회차와 무관하게{" "}
+              <span className="font-medium text-slate-700">
+                전체 기간·전체 회차
+              </span>
+              의 오답률을 봅니다.
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="shrink-0"
+              disabled={!questions || busy}
+              onClick={() => void runLoadAll()}
+            >
+              전체 보기
+            </Button>
+          </div>
+
           <SessionCalendar
-            selectedCode={stats?.code ?? null}
+            selectedCode={stats?.scope === "group" ? stats.code : null}
             onDayPick={handleDayPick}
             onSelect={handleCalendarSelect}
             onSessionExpired={onSessionExpired}
@@ -367,14 +422,20 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
               {/* 요약 */}
               <Card className="space-y-3">
                 <p className="text-xs text-slate-400">
-                  <code className="text-slate-600">{stats.code}</code>
-                  {stats.from === stats.to
-                    ? ` · ${stats.from}`
-                    : ` · ${stats.from} ~ ${stats.to}`}
+                  {stats.scope === "all" ? (
+                    "전체 회차 · 전체 기간"
+                  ) : (
+                    <>
+                      <code className="text-slate-600">{stats.code}</code>
+                      {stats.from === stats.to
+                        ? ` · ${stats.from}`
+                        : ` · ${stats.from} ~ ${stats.to}`}
+                    </>
+                  )}
                 </p>
                 <div className="flex items-end justify-between">
                   <span className="text-sm text-slate-600">
-                    회차 전체 오답률
+                    {stats.scope === "all" ? "전체 오답률" : "회차 전체 오답률"}
                   </span>
                   <span className="font-mono text-4xl font-bold tabular-nums text-red-500">
                     {Math.round(stats.wrongRate * 100)}%
@@ -390,8 +451,9 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
                 </p>
                 {stats.sessions === 0 && (
                   <p className="text-sm leading-relaxed text-slate-600">
-                    이 조건에 해당하는 기록이 없습니다. 회차 코드와 날짜를
-                    확인하세요.
+                    {stats.scope === "all"
+                      ? "아직 쌓인 응답 기록이 없습니다."
+                      : "이 조건에 해당하는 기록이 없습니다. 회차 코드와 날짜를 확인하세요."}
                   </p>
                 )}
               </Card>
@@ -402,7 +464,9 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
                   <section className="space-y-2">
                     <div className="flex items-center justify-between">
                       <h2 className="text-base font-semibold text-slate-900">
-                        교육생이 틀린 문항
+                        {stats.scope === "all"
+                          ? "많이 틀린 문항"
+                          : "교육생이 틀린 문항"}
                       </h2>
                       <Button
                         variant="ghost"
@@ -454,6 +518,7 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
                     <WrongQuestionList
                       questions={visibleQuestions}
                       wrongQuestionCount={wrongQuestionCount}
+                      scope={stats.scope}
                     />
                   </section>
                 </>
