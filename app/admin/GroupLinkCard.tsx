@@ -6,11 +6,17 @@ import { buildGroupLink, normalizeGroupCode } from "@/lib/services/groupCodeServ
 import { Button } from "@/components/shared/Button";
 import { Card } from "@/components/shared/Card";
 
+export interface GroupLinkCardProps {
+  code: string;
+  /** 만족도 조사를 함께 받는 회차인지 — 링크에 `&s=1`이 붙는다. */
+  survey?: boolean;
+}
+
 /**
  * 교육생 배포용 링크·QR 생성 카드.
  * 교육장에서 이 QR을 띄우면, 스캔해 들어온 응답만 해당 회차로 집계된다.
  */
-export function GroupLinkCard({ code }: { code: string }) {
+export function GroupLinkCard({ code, survey = false }: GroupLinkCardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -22,7 +28,10 @@ export function GroupLinkCard({ code }: { code: string }) {
   );
 
   const normalized = normalizeGroupCode(code);
-  const link = normalized && origin ? buildGroupLink(origin, normalized) : "";
+  const link =
+    normalized && origin
+      ? buildGroupLink(origin, normalized, { survey })
+      : "";
 
   // 링크가 바뀔 때마다 QR을 다시 그린다(캔버스 렌더 — 외부 요청 없음).
   useEffect(() => {
@@ -87,6 +96,7 @@ export function GroupLinkCard({ code }: { code: string }) {
       <p className="text-xs text-slate-400 leading-relaxed">
         이 링크로 들어온 기기의 응답만 <b>{normalized}</b> 회차로 집계됩니다.
         회차 표시는 당일 자정에 자동 해제됩니다.
+        {survey && " 교육생 홈 화면에 만족도 조사 버튼이 함께 뜹니다."}
       </p>
     </Card>
   );
