@@ -15,6 +15,7 @@ import { useFavorites } from "@/lib/hooks/useFavorites";
 import { useStats } from "@/lib/hooks/useStats";
 import { useWrongNotes } from "@/lib/hooks/useWrongNotes";
 import { useCountdown } from "@/lib/hooks/useCountdown";
+import { useBackGuard } from "@/lib/hooks/useBackGuard";
 import { isAnswerCorrect } from "@/lib/utils/calculateScore";
 import { useAppStore } from "@/lib/store/appStore";
 import { saveSessionResult } from "@/lib/services/sessionResultService";
@@ -88,6 +89,23 @@ function QuizPlayInner() {
   const startedRef = useRef(false);
   const finishedRef = useRef(false);
 
+  // 풀이 중 나가기. 모의고사는 응시가 무효화되므로 확인 후 나간다.
+  // router.back()은 방문 기록에 의존해 기록이 얕으면(모바일 딥링크/새 탭/PWA)
+  // 사이트 밖으로 나가버린다. 기록과 무관하게 항상 문제 풀기 허브로 가도록 replace 사용.
+  // useBackGuard가 브라우저 뒤로가기도 이 동작으로 맞춰 준다(앱 ← 버튼과 동일).
+  const { requestLeave, leaveWith } = useBackGuard({
+    confirmLeave: () =>
+      !isMock ||
+      finishedRef.current ||
+      window.confirm(
+        "모의고사를 종료하고 나갈까요?\n지금까지 응시한 내용은 저장되지 않습니다.",
+      ),
+    onLeave: () => {
+      setQuizInProgress(false);
+      router.replace("/quiz");
+    },
+  });
+
   // 진입 시 1회 세션 시작 (mode/license 전달).
   useEffect(() => {
     if (startedRef.current) return;
@@ -127,9 +145,10 @@ function QuizPlayInner() {
       saveSessionResult({ result, results, meta });
       // replace로 진입 — 끝난 퀴즈는 히스토리에 남기지 않아, 결과에서 뒤로가기 시
       // 풀이 화면으로 되돌아가지 않고 그 이전(허브/오답노트 등)으로 간다.
-      router.replace(`/result/${result.id}`);
+      // leaveWith로 감싸 가드 항목까지 걷어낸다(남겨 두면 결과→뒤로가기가 풀이 화면으로 감).
+      leaveWith(() => router.replace(`/result/${result.id}`));
     }
-  }, [isMock, finish, setQuizInProgress, license, mode, router]);
+  }, [isMock, finish, setQuizInProgress, license, mode, router, leaveWith]);
 
   // 마지막 문제까지 답하면 채점/이동.
   useEffect(() => {
@@ -246,20 +265,8 @@ function QuizPlayInner() {
     setSelectedIds([]);
   };
 
-  // 풀이 중 나가기. 모의고사는 응시가 무효화되므로 확인 후 나간다.
-  // router.back()은 방문 기록에 의존해 기록이 얕으면(모바일 딥링크/새 탭/PWA)
-  // 사이트 밖으로 나가버린다. 기록과 무관하게 항상 문제 풀기 허브로 가도록 replace 사용.
-  // (push 대신 replace → 현재 항목을 교체하므로 뒤로가기로 퀴즈에 되돌아오는 루프도 없음)
-  const handleExit = () => {
-    if (isMock) {
-      const ok = window.confirm(
-        "모의고사를 종료하고 나갈까요?\n지금까지 응시한 내용은 저장되지 않습니다.",
-      );
-      if (!ok) return;
-    }
-    setQuizInProgress(false);
-    router.replace("/quiz");
-  };
+  // 앱 ← 버튼. 확인·이동은 useBackGuard가 브라우저 뒤로가기와 공유한다.
+  const handleExit = requestLeave;
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-4 py-8 md:px-6">

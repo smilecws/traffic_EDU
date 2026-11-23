@@ -2,6 +2,7 @@
 
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useBackGuard } from "@/lib/hooks/useBackGuard";
 
 export interface PageHeaderProps {
   title: string;
@@ -9,10 +10,20 @@ export interface PageHeaderProps {
   onBack?: () => void;
 }
 
-/** 뒤로가기(←) + 가운데 타이틀. study/quiz 헤더와 일치. */
+/**
+ * 뒤로가기(←) + 가운데 타이틀. study/quiz 헤더와 일치.
+ *
+ * onBack 없이 쓰면 router.back() — 브라우저 뒤로가기와 같은 동작이다.
+ * onBack을 넘겨 동작을 바꾼 화면은 useBackGuard가 브라우저 뒤로가기도
+ * 같은 동작으로 맞춰 준다(둘의 반응이 갈리지 않게).
+ */
 export function PageHeader({ title, onBack }: PageHeaderProps) {
   const router = useRouter();
-  const handleBack = onBack ?? (() => router.back());
+  const { requestLeave } = useBackGuard({
+    enabled: onBack != null,
+    onLeave: () => onBack?.(),
+  });
+  const handleBack = onBack ? requestLeave : () => router.back();
 
   return (
     <header className="flex items-center">
