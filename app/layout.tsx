@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import QueryProvider from "@/components/QueryProvider";
+import GroupCodeCapture from "@/components/GroupCodeCapture";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,6 +31,8 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* 진입 URL의 ?g=(교육 회차 코드) 캡처 — 화면 없음 */}
+        <GroupCodeCapture />
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

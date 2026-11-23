@@ -35,6 +35,34 @@ FIREBASE_SERVICE_ACCOUNT="$(cat key.json)" npm run aggregate
 
 ---
 
+# 관리자 화면(/admin) 설정
+
+회차별 통계 화면은 **공유 비밀번호 1개**로 들어갑니다. 비밀번호 검증과 Firestore
+읽기는 모두 서버 라우트(`app/api/admin/`)에서 하므로, 브라우저에는 비밀번호도
+서비스 계정 키도 내려가지 않습니다. Firestore 보안 규칙은 읽기를 계속 전면
+차단한 상태로 둡니다.
+
+## 필요한 환경변수 (Vercel → Settings → Environment Variables)
+
+| 이름 | 값 | 비고 |
+| --- | --- | --- |
+| `ADMIN_PASSWORD` | 관리자 비밀번호 | 8자 이상 권장. `NEXT_PUBLIC_` 붙이지 말 것 |
+| `FIREBASE_SERVICE_ACCOUNT` | 서비스 계정 JSON **전문** | 집계 workflow와 같은 값 |
+
+- 두 값 모두 **서버 전용**입니다. `NEXT_PUBLIC_` 접두사를 붙이면 브라우저에
+  노출되므로 절대 붙이지 마세요.
+- 설정 후 **재배포**해야 반영됩니다.
+- 비밀번호를 바꾸면 기존 세션(12시간 쿠키)은 전부 무효화됩니다.
+- 로컬 개발은 `.env.local`에 같은 두 값을 넣으면 됩니다(커밋 금지).
+
+## 색인
+
+회차 조회는 `g` + `createdAt` 복합 색인을 씁니다.
+
+```bash
+firebase deploy --only firestore:rules,firestore:indexes
+```
+
 # 학습자료 변환 (카드뉴스 HWP → study JSON)
 
 학습하기 탭의 원천 데이터(`public/data/study/*.json`)는 **카드뉴스 HWP 검토본**에서

@@ -1,16 +1,23 @@
 rules_version = '2';
 
 // 익명 오답 집계 전용 보안 규칙.
-// 인증이 없으므로(로그인 미사용) 이 규칙이 유일한 방어선이다.
-// - answer_logs / wrong_answer_logs: 생성(create)만 허용, 읽기/수정/삭제 전면 금지.
+// - answer_logs / wrong_answer_logs: 교육생(비로그인)은 생성(create)만 가능.
 //   문서 형태를 엄격히 검증해 임의 필드/타입 주입을 막는다.
+// - 읽기는 클라이언트에 전면 금지. 회차별 통계(/admin)는 서버 라우트가
+//   서비스 계정(Admin SDK)으로 읽어 집계 결과만 내려준다.
 // - 그 외 모든 경로: 전면 차단.
 //
-// 콘솔 적용: Firebase Console → Firestore Database → 규칙 탭에 붙여넣고 게시.
-// (개인 식별 정보는 절대 기록하지 않는다 — questionId/정오답/createdAt만)
+// 배포: firebase deploy --only firestore:rules
+// (개인 식별 정보는 절대 기록하지 않는다 — questionId/정오답/회차코드/createdAt만)
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // 교육 회차 코드 — 소문자/숫자/하이픈 1~24자.
+    // groupCodeService.ts 의 CODE_PATTERN 과 동일하게 유지할 것.
+    function isValidGroupCode(g) {
+      return g is string && g.size() > 0 && g.size() <= 24 && g.matches('^[a-z0-9-]+$');
+    }
 
     function isValidLog() {
       let d = request.resource.data;
@@ -23,11 +30,13 @@ service cloud.firestore {
     // 익명 답안 로그(세션 요약) — items 내부 원소({q,c})의 깊은 검증은
     // Firestore 규칙 한계상 강제하지 않는다(익명 데이터 + 추후 App Check로 남용 완화).
     // 형태(필드/타입)와 items 크기 상한만 검증한다.
+    // g(교육 회차 코드)는 선택 필드 — 없으면 전체 집계에만 반영된다.
     function isValidAnswerLog() {
       let d = request.resource.data;
-      return d.keys().hasOnly(['items', 'createdAt'])
+      return d.keys().hasOnly(['items', 'createdAt', 'g'])
         && d.items is list && d.items.size() > 0 && d.items.size() <= 200
-        && d.createdAt is timestamp;
+        && d.createdAt is timestamp
+        && (!('g' in d) || isValidGroupCode(d.g));
     }
 
     match /wrong_answer_logs/{docId} {
