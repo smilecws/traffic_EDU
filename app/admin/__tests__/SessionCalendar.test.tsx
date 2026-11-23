@@ -35,6 +35,38 @@ function mockCalendarFetch() {
   });
 }
 
+/** 두 날짜에 기록이 있는 응답 — 자동 펼침이 일어나지 않는 상황을 만든다. */
+function mockTwoDayFetch() {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), "http://localhost");
+    const month = url.searchParams.get("month") ?? "";
+    return new Response(
+      JSON.stringify({
+        month,
+        days: [
+          {
+            date: `${month}-05`,
+            sessions: 3,
+            untagged: 3,
+            groups: [],
+          },
+          {
+            date: `${month}-14`,
+            sessions: 21,
+            untagged: 0,
+            groups: [
+              { code: "1114-seoul-aaa", sessions: 12 },
+              { code: "1114-chuncheon-bbb", sessions: 9 },
+            ],
+          },
+        ],
+        truncated: false,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  });
+}
+
 function wrap(node: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -57,6 +89,7 @@ describe("SessionCalendar", () => {
     wrap(
       <SessionCalendar
         selectedCode={null}
+        onDayPick={() => {}}
         onSelect={() => {}}
         onSessionExpired={() => {}}
       />,
@@ -74,6 +107,7 @@ describe("SessionCalendar", () => {
     wrap(
       <SessionCalendar
         selectedCode={null}
+        onDayPick={() => {}}
         onSelect={() => {}}
         onSessionExpired={() => {}}
       />,
@@ -94,6 +128,7 @@ describe("SessionCalendar", () => {
     wrap(
       <SessionCalendar
         selectedCode={null}
+        onDayPick={() => {}}
         onSelect={onSelect}
         onSessionExpired={() => {}}
       />,
@@ -106,6 +141,53 @@ describe("SessionCalendar", () => {
     const [code, date] = onSelect.mock.calls[0];
     expect(code).toBe("1114-seoul-aaa");
     expect(date).toMatch(/^\d{4}-\d{2}-14$/);
+  });
+
+  it("날짜 칸을 누르면 그날 정보를 상위에 넘긴다", async () => {
+    vi.stubGlobal("fetch", mockTwoDayFetch());
+    const onDayPick = vi.fn();
+
+    wrap(
+      <SessionCalendar
+        selectedCode={null}
+        onDayPick={onDayPick}
+        onSelect={() => {}}
+        onSessionExpired={() => {}}
+      />,
+    );
+
+    const day5 = await screen.findByRole("button", { name: "5일 세션 3건" });
+    day5.click();
+
+    await waitFor(() => expect(onDayPick).toHaveBeenCalledTimes(1));
+    const picked = onDayPick.mock.calls[0][0];
+    // 회차 코드 없는 응답만 있는 날 — 상위가 "조회할 회차 없음"을 띄울 수 있어야 한다
+    expect(picked.groups).toEqual([]);
+    expect(picked.untagged).toBe(3);
+    expect(picked.date).toMatch(/^\d{4}-\d{2}-05$/);
+  });
+
+  it("펼친 날짜를 다시 누르면 null을 넘긴다(접기)", async () => {
+    vi.stubGlobal("fetch", mockTwoDayFetch());
+    const onDayPick = vi.fn();
+
+    wrap(
+      <SessionCalendar
+        selectedCode={null}
+        onDayPick={onDayPick}
+        onSelect={() => {}}
+        onSessionExpired={() => {}}
+      />,
+    );
+
+    const day14 = await screen.findByRole("button", { name: "14일 세션 21건" });
+    day14.click();
+    await waitFor(() => expect(onDayPick).toHaveBeenCalledTimes(1));
+    expect(onDayPick.mock.calls[0][0]).not.toBeNull();
+
+    day14.click();
+    await waitFor(() => expect(onDayPick).toHaveBeenCalledTimes(2));
+    expect(onDayPick.mock.calls[1][0]).toBeNull();
   });
 
   it("조회 실패 시 서버 메시지를 보여준다", async () => {
@@ -123,6 +205,7 @@ describe("SessionCalendar", () => {
     wrap(
       <SessionCalendar
         selectedCode={null}
+        onDayPick={() => {}}
         onSelect={() => {}}
         onSessionExpired={() => {}}
       />,
@@ -141,6 +224,7 @@ describe("SessionCalendar", () => {
     wrap(
       <SessionCalendar
         selectedCode={null}
+        onDayPick={() => {}}
         onSelect={() => {}}
         onSessionExpired={onSessionExpired}
       />,

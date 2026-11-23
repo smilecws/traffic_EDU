@@ -9,6 +9,7 @@ import {
   toCsv,
   type GroupStats,
 } from "@/lib/services/adminStatsService";
+import type { CalendarDay } from "@/lib/services/adminCalendarService";
 import { DEFAULT_CLASSIFIER } from "@/lib/services/questionClassifier";
 import { useQuestions } from "@/lib/hooks/useQuestions";
 import { Button } from "@/components/shared/Button";
@@ -127,6 +128,9 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /** 달력에서 펼쳐 둔 날 — 회차를 아직 고르지 않았을 때 안내를 띄우는 데 쓴다. */
+  const [pickedDay, setPickedDay] = useState<CalendarDay | null>(null);
+
   const normalized = normalizeGroupCode(code);
 
   /**
@@ -138,6 +142,9 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
       if (!questions) return;
       setBusy(true);
       setError(null);
+      // 조회가 시작되면 이전 결과를 즉시 버린다 — 낡은 숫자가 남아 있으면
+      // 화면이 "안 바뀐 것"처럼 보인다.
+      setStats(null);
       try {
         const result = await loadGroupStats({
           ...params,
@@ -168,6 +175,28 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
       void runLoad({ code: selectedCode, from: date, to: date });
     },
     [runLoad],
+  );
+
+  /**
+   * 달력에서 날짜 칸을 누른 경우.
+   *
+   * 날짜만 눌러도 이전 결과를 지운다. 그러지 않으면 다른 날짜를 눌렀는데 아래에
+   * 지난 회차의 숫자가 그대로 남아 "업데이트가 안 된다"로 보인다.
+   * 그 날에 회차가 하나뿐이면 목록을 거치지 않고 바로 조회한다.
+   */
+  const handleDayPick = useCallback(
+    (day: CalendarDay | null) => {
+      setPickedDay(day);
+      if (!day) return; // 접은 것 — 보고 있던 결과는 그대로 둔다
+
+      setStats(null);
+      setError(null);
+
+      if (day.groups.length === 1) {
+        handleCalendarSelect(day.groups[0].code, day.date);
+      }
+    },
+    [handleCalendarSelect],
   );
 
   function handleDownload() {
@@ -229,6 +258,7 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
         <>
           <SessionCalendar
             selectedCode={stats?.code ?? null}
+            onDayPick={handleDayPick}
             onSelect={handleCalendarSelect}
             onSessionExpired={onSessionExpired}
           />
@@ -304,6 +334,17 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
           {error && (
             <Card>
               <p className="text-sm text-red-500">{error}</p>
+            </Card>
+          )}
+
+          {/* 날짜만 고른 상태 — 결과가 없는 이유를 비워 두지 않고 말해 준다. */}
+          {!stats && !busy && !error && pickedDay && (
+            <Card>
+              <p className="text-sm leading-relaxed text-slate-600">
+                {pickedDay.groups.length === 0
+                  ? "이 날은 회차 코드 없는 응답만 있어 조회할 회차가 없습니다."
+                  : "위 목록에서 회차를 고르세요."}
+              </p>
             </Card>
           )}
 
