@@ -101,6 +101,35 @@ describe("buildQuizQuestions", () => {
     });
   });
 
+  describe("assigned 모드 (교수자 지정 출제)", () => {
+    it("지정 목록만, 지정 순서대로 반환한다", () => {
+      const result = buildQuizQuestions(
+        "assigned",
+        { all, wrongIds: [], favoriteIds: [] },
+        { questionIds: ["q7", "q2", "q40"] },
+      );
+      expect(result.map((q) => q.id)).toEqual(["q7", "q2", "q40"]);
+    });
+
+    it("목록이 없으면 빈 배열 — 개인 데이터로 흘러내리지 않는다", () => {
+      const result = buildQuizQuestions("assigned", {
+        all,
+        wrongIds: ["q1"],
+        favoriteIds: ["q2"],
+      });
+      expect(result).toEqual([]);
+    });
+
+    it("존재하지 않는 id는 무시한다", () => {
+      const result = buildQuizQuestions(
+        "assigned",
+        { all, wrongIds: [], favoriteIds: [] },
+        { questionIds: ["q3", "없는문제"] },
+      );
+      expect(result.map((q) => q.id)).toEqual(["q3"]);
+    });
+  });
+
   describe("sequential 모드", () => {
     it("startNumber 이상인 문제를 번호 오름차순으로 전부 반환", () => {
       const result = buildQuizQuestions(

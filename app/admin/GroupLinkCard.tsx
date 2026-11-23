@@ -10,13 +10,25 @@ export interface GroupLinkCardProps {
   code: string;
   /** 만족도 조사를 함께 받는 회차인지 — 링크에 `&s=1`이 붙는다. */
   survey?: boolean;
+  /**
+   * 지정 출제 문제 수. 0이면 지정 출제가 없는 회차다.
+   *
+   * 문제 목록 자체는 **링크에 싣지 않는다.** 주소에 담으면 교육생이 주소창에서
+   * 바꿀 수 있고, 수십 개 번호를 QR에 실으면 코드 밀도가 나빠져 교육장 뒷줄에서
+   * 스캔이 안 된다. 기기는 `/api/session`에 물어서 받아 간다.
+   */
+  pickCount?: number;
 }
 
 /**
  * 교육생 배포용 링크·QR 생성 카드.
  * 교육장에서 이 QR을 띄우면, 스캔해 들어온 응답만 해당 회차로 집계된다.
  */
-export function GroupLinkCard({ code, survey = false }: GroupLinkCardProps) {
+export function GroupLinkCard({
+  code,
+  survey = false,
+  pickCount = 0,
+}: GroupLinkCardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -97,6 +109,8 @@ export function GroupLinkCard({ code, survey = false }: GroupLinkCardProps) {
         이 링크로 들어온 기기의 응답만 <b>{normalized}</b> 회차로 집계됩니다.
         회차 표시는 당일 자정에 자동 해제됩니다.
         {survey && " 교육생 홈 화면에 만족도 조사 버튼이 함께 뜹니다."}
+        {pickCount > 0 &&
+          ` 홈 맨 위에 지정 문제 ${pickCount}문제 카드가 뜹니다.`}
       </p>
     </Card>
   );

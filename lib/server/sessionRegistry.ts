@@ -4,6 +4,7 @@ import {
   type Firestore,
 } from "firebase-admin/firestore";
 import { issueGroupCode, normalizeBranchName } from "@/lib/utils/groupCode";
+import { normalizePicks } from "@/lib/utils/questionPicks";
 import { kstDayBoundary, toKstDateString } from "@/lib/utils/kstDate";
 
 /**
@@ -55,6 +56,15 @@ export interface SessionRecord {
   branch: string;
   /** 만족도 조사를 함께 받는 회차인지. **이 값만이 설문을 켜고 끈다.** */
   survey: boolean;
+  /**
+   * 교수자가 지정한 출제 문제 id 목록. 비어 있으면 지정 출제가 없는 회차다.
+   *
+   * 발급 시점에 **값으로** 박아 둔다(세트 id 참조가 아니다). 참조로 두면
+   * 교수자가 다음 교육을 준비하며 세트를 고친 순간 이미 끝난 회차의 출제
+   * 내용이 소급 변경되고, 회차별 오답률을 "무엇을 틀렸는지"로 읽을 수 없게 된다.
+   * 이미 QR을 뿌린 회차의 내용이 바뀌어선 안 된다는 것은 설문 체크박스와 같은 원칙이다.
+   */
+  picks: string[];
   /** epoch ms */
   issuedAt: number;
   /** epoch ms — 발급일 KST 자정. 이후로는 코드도 설문도 닫힌다. */
@@ -81,6 +91,8 @@ function toRecord(
     code: id,
     branch: typeof data.branch === "string" ? data.branch : "",
     survey: data.survey === true,
+    // 지정 출제가 없던 회차(필드 자체가 없음)는 빈 배열로 읽는다.
+    picks: normalizePicks(data.picks),
     issuedAt: createdAt.toMillis(),
     expiresAt: expiresAt.toMillis(),
     surveyCount: typeof data.surveyCount === "number" ? data.surveyCount : 0,
@@ -98,14 +110,18 @@ function toRecord(
  * 이름은 **선택**이다. 비워도 발급된다 — 코드가 회차를 식별하고, 이름은
  * 관리자용 메모일 뿐이다.
  *
+ * 지정 출제 문제(`picks`)도 선택이다. 비우면 교육생 화면은 전과 완전히 같다.
+ *
  * @returns 등록된 회차. 코드를 끝내 확보하지 못하면 null(사실상 일어나지 않는다).
  */
 export async function issueSession(
   db: Firestore,
-  options: { branch?: string; survey: boolean },
+  options: { branch?: string; survey: boolean; picks?: unknown },
   now: Date = new Date(),
 ): Promise<SessionRecord | null> {
   const branch = normalizeBranchName(options.branch ?? "");
+  // 형식 검증은 여기서 끝낸다 — 라우트가 넘긴 값을 그대로 믿지 않는다.
+  const picks = normalizePicks(options.picks);
 
   const date = toKstDateString(now.getTime());
   const expiresAt = kstDayBoundary(date, "end");
@@ -123,6 +139,8 @@ export async function issueSession(
         expiresAt: Timestamp.fromDate(expiresAt),
         surveyCount: 0,
         date,
+        // 지정 출제가 없으면 필드를 넣지 않는다 — 기존 회차 문서와 형태를 맞춘다.
+        ...(picks.length > 0 ? { picks } : {}),
       });
     } catch {
       continue; // 이미 쓰인 코드 — 접미사를 다시 뽑는다
@@ -132,6 +150,7 @@ export async function issueSession(
       code,
       branch,
       survey: options.survey === true,
+      picks,
       issuedAt: now.getTime(),
       expiresAt: expiresAt.getTime(),
       surveyCount: 0,

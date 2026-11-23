@@ -20,6 +20,7 @@ import { useUnloadWarning } from "@/lib/hooks/useUnloadWarning";
 import { isAnswerCorrect } from "@/lib/utils/calculateScore";
 import { useAppStore } from "@/lib/store/appStore";
 import { saveSessionResult } from "@/lib/services/sessionResultService";
+import { getAssignmentPicks } from "@/lib/services/assignmentService";
 import { getLicense, MOCK_DURATION_MS } from "@/lib/data/licenses";
 import type { QuizMode, SessionMeta } from "@/lib/types";
 import { QuizCard } from "@/components/quiz/QuizCard";
@@ -34,7 +35,8 @@ function isQuizMode(v: string | null): v is QuizMode {
     v === "wrong" ||
     v === "favorite" ||
     v === "mock" ||
-    v === "sequential"
+    v === "sequential" ||
+    v === "assigned"
   );
 }
 
@@ -112,11 +114,18 @@ function QuizPlayInner() {
   useUnloadWarning(isMock && !isComplete);
 
   // 진입 시 1회 세션 시작 (mode/license 전달).
+  //
+  // 지정 출제(assigned)는 문제 목록을 **여기서** 읽는다. 주소에 싣지 않는 이유는
+  // 교육생이 주소창에서 바꿀 수 있고 링크가 길어지기 때문이고, 구독하지 않고
+  // 이펙트 안에서 한 번 읽는 이유는 하이드레이션 중의 빈 목록이 "문제가 없습니다"로
+  // 굳어 버리지 않게 하기 위해서다(세션 시작은 startedRef로 한 번만 일어난다).
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
     setQuizInProgress(true);
-    void startSession({ mode, license, type, startNumber, questionIds });
+    const ids =
+      questionIds ?? (mode === "assigned" ? getAssignmentPicks() : undefined);
+    void startSession({ mode, license, type, startNumber, questionIds: ids });
     return () => setQuizInProgress(false);
   }, [
     startSession,
@@ -197,9 +206,15 @@ function QuizPlayInner() {
             ? "오답노트가 비어 있습니다"
             : mode === "favorite"
               ? "즐겨찾기한 문제가 없습니다"
-              : "풀 수 있는 문제가 없습니다"}
+              : mode === "assigned"
+                ? "지정된 문제를 찾을 수 없습니다"
+                : "풀 수 있는 문제가 없습니다"}
         </p>
-        <p className="text-sm text-slate-500">문제를 풀면 여기에 모입니다.</p>
+        <p className="text-sm text-slate-500">
+          {mode === "assigned"
+            ? "교육 회차가 끝났거나(당일 자정) 지정이 해제되었습니다. 교육장 QR을 다시 찍어 주세요."
+            : "문제를 풀면 여기에 모입니다."}
+        </p>
         <Button onClick={() => router.push("/quiz")}>
           문제 풀기로 돌아가기
         </Button>
