@@ -36,6 +36,13 @@ function formatDate(date: string): string {
 export interface SessionCalendarProps {
   /** 현재 조회 중인 회차 코드(강조 표시용). */
   selectedCode: string | null;
+  /**
+   * 날짜 칸을 눌렀을 때 — 펼친 날의 정보, 접었으면 null.
+   *
+   * 날짜만 눌러도 상위가 이전 조회 결과를 지울 수 있어야 한다. 그러지 않으면
+   * 다른 날짜를 눌렀는데 아래에 낡은 숫자가 그대로 남아 "안 바뀐다"로 보인다.
+   */
+  onDayPick: (day: CalendarDay | null) => void;
   /** 회차를 고르면 호출된다 — 코드와 그 날짜(`yyyy-MM-dd`). */
   onSelect: (code: string, date: string) => void;
   /** 세션 만료 시 로그인 화면으로 돌리기 위한 콜백. */
@@ -51,6 +58,7 @@ export interface SessionCalendarProps {
  */
 export function SessionCalendar({
   selectedCode,
+  onDayPick,
   onSelect,
   onSessionExpired,
 }: SessionCalendarProps) {
@@ -172,7 +180,12 @@ export function SessionCalendar({
                   ? `${dayOfMonth}일 세션 ${day.sessions}건`
                   : `${dayOfMonth}일`
               }
-              onClick={() => setOpenDate(isOpen ? null : date)}
+              onClick={() => {
+                const next = isOpen ? null : date;
+                setOpenDate(next);
+                // disabled={!day}이므로 펼치는 쪽에서는 day가 항상 있다.
+                onDayPick(next && day ? day : null);
+              }}
               className={cn(
                 "relative flex aspect-square items-center justify-center rounded-lg text-sm tabular-nums transition-colors",
                 day
