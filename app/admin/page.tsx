@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils/cn";
 import { AdminLogin } from "./AdminLogin";
 import { IssueSessionCard } from "./IssueSessionCard";
 import { SessionCalendar } from "./SessionCalendar";
+import { WrongQuestionList } from "./WrongQuestionList";
 
 /** 진입 단계. */
 type Phase = "loading" | "unconfigured" | "locked" | "ready";
@@ -215,7 +216,8 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
   const visibleQuestions = useMemo(
     () =>
       (stats?.questions ?? [])
-        .filter((q) => q.attempts >= minAttempts)
+        // 오답이 0건인 문항은 "틀린 문항"이 아니므로 제외한다.
+        .filter((q) => q.wrong > 0 && q.attempts >= minAttempts)
         .slice(0, limit),
     [stats, minAttempts, limit],
   );
@@ -384,39 +386,11 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
 
               {stats.sessions > 0 && (
                 <>
-                  {/* 분류별 오답률 */}
-                  <section className="space-y-2">
-                    <h2 className="text-base font-semibold text-slate-900">
-                      {DEFAULT_CLASSIFIER.label}별 오답률
-                    </h2>
-                    <Card className="space-y-3">
-                      {stats.buckets.map((b) => (
-                        <div key={b.key} className="space-y-1">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-slate-700">{b.label}</span>
-                            <span className="font-semibold tabular-nums text-slate-900">
-                              {b.attempts > 0
-                                ? `${Math.round(b.wrongRate * 100)}%`
-                                : "—"}
-                            </span>
-                          </div>
-                          <ProgressBar
-                            value={Math.round(b.wrongRate * 100)}
-                            max={100}
-                          />
-                          <p className="text-xs tabular-nums text-slate-400">
-                            응답 {b.attempts}건 · 오답 {b.wrong}건
-                          </p>
-                        </div>
-                      ))}
-                    </Card>
-                  </section>
-
                   {/* 문항별 */}
                   <section className="space-y-2">
                     <div className="flex items-center justify-between">
                       <h2 className="text-base font-semibold text-slate-900">
-                        많이 틀린 문항
+                        교육생이 틀린 문항
                       </h2>
                       <Button
                         variant="ghost"
@@ -465,41 +439,7 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
                       </label>
                     </div>
 
-                    {visibleQuestions.length === 0 ? (
-                      <Card>
-                        <p className="text-sm leading-relaxed text-slate-600">
-                          조건을 만족하는 문항이 없습니다. 최소 응답 수를 낮춰
-                          보세요.
-                        </p>
-                      </Card>
-                    ) : (
-                      <Card className="space-y-1 p-2">
-                        <ol className="divide-y divide-[#ebe9f5]">
-                          {visibleQuestions.map((q, index) => (
-                            <li
-                              key={q.questionId}
-                              className="flex items-center gap-3 px-3 py-2.5"
-                            >
-                              <span className="w-6 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-400">
-                                {index + 1}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm text-slate-900">
-                                  {q.text}
-                                </p>
-                                <span className="text-xs tabular-nums text-slate-400">
-                                  {q.number !== null ? `${q.number}번 · ` : ""}
-                                  {q.bucketLabel} · 오답 {q.wrong}/{q.attempts}
-                                </span>
-                              </div>
-                              <span className="shrink-0 text-sm font-semibold tabular-nums text-red-500">
-                                {Math.round(q.wrongRate * 100)}%
-                              </span>
-                            </li>
-                          ))}
-                        </ol>
-                      </Card>
-                    )}
+                    <WrongQuestionList questions={visibleQuestions} />
                   </section>
                 </>
               )}

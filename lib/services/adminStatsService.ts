@@ -1,6 +1,5 @@
 import type { Question } from "@/lib/types";
 import {
-  type Bucket,
   type Classifier,
   UNCLASSIFIED,
 } from "@/lib/services/questionClassifier";
@@ -29,14 +28,11 @@ export interface GroupQuestionStat {
   number: number | null;
   text: string;
   bucketLabel: string;
-  attempts: number;
-  wrong: number;
-  /** 0..1 */
-  wrongRate: number;
-}
-
-/** 분류 묶음 1건의 회차 내 성적. */
-export interface GroupBucketStat extends Bucket {
+  /**
+   * 문제 전문(선택지·정답·해설·이미지). 문제 데이터에 없는 id면 null.
+   * 관리자 화면이 틀린 문항을 펼쳐 복기할 수 있게 조인해서 넘긴다.
+   */
+  question: Question | null;
   attempts: number;
   wrong: number;
   /** 0..1 */
@@ -54,7 +50,6 @@ export interface GroupStats {
   wrong: number;
   /** 0..1 */
   wrongRate: number;
-  buckets: GroupBucketStat[];
   /** 오답률 내림차순 정렬된 전체 문항 (minAttempts 필터 적용 전) */
   questions: GroupQuestionStat[];
 }
@@ -119,12 +114,6 @@ export async function loadGroupStats({
   const questionById = new Map<string, Question>();
   for (const q of questions) questionById.set(q.id, q);
 
-  // 분류 묶음은 "0건이어도 표에 남기도록" 기본 목록으로 먼저 채운다.
-  const bucketAcc = new Map<string, GroupBucketStat>();
-  for (const b of classifier.buckets()) {
-    bucketAcc.set(b.key, { ...b, attempts: 0, wrong: 0, wrongRate: 0 });
-  }
-
   const questionStats: GroupQuestionStat[] = [];
   let totalAttempts = 0;
   let totalWrong = 0;
@@ -139,30 +128,17 @@ export async function loadGroupStats({
     const question = questionById.get(questionId);
     const bucket = question ? classifier.classify(question) : UNCLASSIFIED;
 
-    const acc = bucketAcc.get(bucket.key) ?? {
-      ...bucket,
-      attempts: 0,
-      wrong: 0,
-      wrongRate: 0,
-    };
-    acc.attempts += attempts;
-    acc.wrong += wrong;
-    bucketAcc.set(bucket.key, acc);
-
     questionStats.push({
       questionId,
       number: question?.number ?? null,
       // 문제 데이터에 없는 id(데이터 불일치)도 집계에선 버리지 않고 표시만 대체한다.
       text: question?.question ?? `(문제 데이터 없음 · id ${questionId})`,
       bucketLabel: bucket.label,
+      question: question ?? null,
       attempts,
       wrong,
       wrongRate: rate(wrong, attempts),
     });
-  }
-
-  for (const acc of bucketAcc.values()) {
-    acc.wrongRate = rate(acc.wrong, acc.attempts);
   }
 
   // 오답률 내림차순 → 응답수 내림차순 → 문제번호 오름차순(결정적 정렬)
@@ -173,10 +149,6 @@ export async function loadGroupStats({
       (a.number ?? 0) - (b.number ?? 0),
   );
 
-  const buckets = [...bucketAcc.values()].sort(
-    (a, b) => b.wrongRate - a.wrongRate || b.attempts - a.attempts,
-  );
-
   return {
     code: body.code,
     from: body.from,
@@ -185,7 +157,6 @@ export async function loadGroupStats({
     attempts: totalAttempts,
     wrong: totalWrong,
     wrongRate: rate(totalWrong, totalAttempts),
-    buckets,
     questions: questionStats,
   };
 }
@@ -193,13 +164,15 @@ export async function loadGroupStats({
 /**
  * 집계 결과를 엑셀에서 바로 열리는 CSV 문자열로 만든다.
  * 한글 깨짐 방지를 위해 BOM을 앞에 붙인다.
+ *
+ * 화면의 "교육생이 틀린 문항" 목록과 같은 조건(오답 1건 이상)으로 내보낸다.
  */
 export function toCsv(stats: GroupStats, minAttempts: number): string {
   const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
   const rows = [
     ["문제번호", "유형", "응답수", "오답수", "오답률(%)", "문제"].map(esc).join(","),
     ...stats.questions
-      .filter((q) => q.attempts >= minAttempts)
+      .filter((q) => q.wrong > 0 && q.attempts >= minAttempts)
       .map((q) =>
         [
           q.number ?? q.questionId,
