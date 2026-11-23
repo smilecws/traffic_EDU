@@ -3,6 +3,10 @@ import { Timestamp } from "firebase-admin/firestore";
 import { ADMIN_COOKIE, verifySessionValue } from "@/lib/server/adminAuth";
 import { getAdminDb } from "@/lib/server/firebaseAdmin";
 import {
+  listSessionsInRange,
+  type SessionRecord,
+} from "@/lib/server/sessionRegistry";
+import {
   MONTH_PATTERN,
   kstMonthBoundary,
   toKstDateString,
@@ -11,10 +15,17 @@ import {
 /**
  * 관리자 전용 — 한 달치 "회차가 있었던 날" 달력.
  *
- * 회차 코드는 어디에도 발급 기록이 없다. 그래서 **쌓인 로그에서 역산**한다:
- * 그 달의 `answer_logs`를 훑어 KST 날짜별로 어떤 `g`(회차 코드)가 몇 건
- * 들어왔는지 센다. 관리자는 달력에서 날짜를 눌러 그날의 회차를 고르면 되고,
- * 코드를 외우거나 적어 둘 필요가 없다.
+ * 두 가지를 겹쳐서 만든다.
+ *
+ *  1) **회차 등록부**(`sessions`) — 발급된 회차. 응답이 0건이어도 달력에 뜬다.
+ *     예전에는 등록부가 없어서, 교육은 했는데 아무도 문제를 안 풀면 그 회차는
+ *     달력에서 아예 보이지 않았다. 교육반 이름(한글)도 여기에만 있다.
+ *  2) **쌓인 로그에서 역산** — 그 달의 `answer_logs`를 훑어 KST 날짜별로 어떤
+ *     `g`가 몇 건 들어왔는지 센다. 등록부에 없는 코드(옛 회차, 또는 주소에
+ *     임의로 붙여 넣은 값)도 여기서 드러나며, `registered: false`로 표시된다.
+ *
+ * 관리자는 달력에서 날짜를 눌러 그날의 회차를 고르면 되고, 코드를 외우거나
+ * 적어 둘 필요가 없다.
  *
  * `.select('g', 'createdAt')`로 **필드 마스크**를 걸어 `items` 배열(최대 200개)을
  * 내려받지 않는다 — 전송량과 응답 시간이 크게 줄어든다. 단, Firestore 네이티브
@@ -88,6 +99,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // 등록부 조회가 실패해도 달력 자체는 띄운다 — 역산 결과만으로도 쓸 수 있다.
+  let registered: SessionRecord[] = [];
+  try {
+    registered = await listSessionsInRange(
+      db,
+      kstMonthBoundary(month, "start"),
+      kstMonthBoundary(month, "end"),
+    );
+  } catch {
+    registered = [];
+  }
+
   const byDate = new Map<string, DayAccumulator>();
 
   snapshot.forEach((doc) => {
@@ -108,6 +131,15 @@ export async function GET(request: NextRequest) {
     byDate.set(date, acc);
   });
 
+  // 발급은 됐는데 응답이 0건인 회차도 달력에 올린다(0건으로).
+  const branchByCode = new Map<string, string>();
+  for (const session of registered) {
+    branchByCode.set(session.code, session.branch);
+    const acc = byDate.get(session.date) ?? { groups: new Map(), untagged: 0 };
+    if (!acc.groups.has(session.code)) acc.groups.set(session.code, 0);
+    byDate.set(session.date, acc);
+  }
+
   const days = [...byDate.entries()]
     .map(([date, acc]) => ({
       date,
@@ -116,7 +148,12 @@ export async function GET(request: NextRequest) {
       untagged: acc.untagged,
       // 세션 수 많은 회차부터 — 교육 회차가 위로 오고 자잘한 건 아래로
       groups: [...acc.groups.entries()]
-        .map(([code, sessions]) => ({ code, sessions }))
+        .map(([code, sessions]) => ({
+          code,
+          sessions,
+          branch: branchByCode.get(code) ?? "",
+          registered: branchByCode.has(code),
+        }))
         .sort((a, b) => b.sessions - a.sessions || a.code.localeCompare(b.code)),
     }))
     .sort((a, b) => a.date.localeCompare(b.date));

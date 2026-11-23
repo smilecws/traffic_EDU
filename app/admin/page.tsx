@@ -400,7 +400,9 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
         ))}
       </div>
 
-      {tab === "issue" && <IssueSessionCard />}
+      {tab === "issue" && (
+        <IssueSessionCard onSessionExpired={onSessionExpired} />
+      )}
 
       {tab === "stats" && (
         <>

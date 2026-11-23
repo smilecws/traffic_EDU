@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { saveGroupCode } from "@/lib/services/groupCodeService";
 import {
-  captureSurveyFlagFromSearch,
   clearSurveyState,
   markSurveyDone,
+  setSurveyForCode,
 } from "@/lib/services/surveyService";
 import { SurveyEntry } from "@/components/survey/SurveyEntry";
 
@@ -24,10 +24,14 @@ beforeEach(() => {
   push.mockClear();
 });
 
-/** 설문이 켜진 회차 QR로 막 들어온 상태를 만든다. */
+/**
+ * 설문이 켜진 회차 QR로 막 들어온 상태를 만든다.
+ * 설문을 켜는 주체는 서버다 — `GroupCodeCapture`가 `/api/session`의 답을
+ * `setSurveyForCode`로 넘긴다. 여기서는 그 답이 도착한 상태를 흉내 낸다.
+ */
 function enterWithSurvey(code = "1124-chuncheon-7k2") {
   saveGroupCode(code);
-  captureSurveyFlagFromSearch(`?g=${code}&s=1`, code);
+  setSurveyForCode(code, true);
   return code;
 }
 

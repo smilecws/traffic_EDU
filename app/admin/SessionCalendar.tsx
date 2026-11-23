@@ -246,9 +246,17 @@ export function SessionCalendar({
                         : "border-[#ebe9f5] hover:bg-[#f5f4fb]",
                     )}
                   >
-                    <code className="min-w-0 flex-1 truncate text-sm text-slate-900">
-                      {g.code}
-                    </code>
+                    <span className="min-w-0 flex-1">
+                      <code className="block truncate text-sm text-slate-900">
+                        {g.code}
+                      </code>
+                      {/* 교육반 이름은 회차 등록부에만 있다 — 옛 회차는 비어 있다. */}
+                      {g.branch && (
+                        <span className="block truncate text-xs text-slate-400">
+                          {g.branch}
+                        </span>
+                      )}
+                    </span>
                     <span className="shrink-0 text-xs tabular-nums text-slate-400">
                       세션 {g.sessions}건
                     </span>

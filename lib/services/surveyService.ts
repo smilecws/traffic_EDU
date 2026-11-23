@@ -1,14 +1,18 @@
 import { getItem, setItem, removeItem } from "@/lib/utils/storage";
-import { getDb } from "@/lib/firebase";
 import { endOfToday, getGroupCode } from "@/lib/services/groupCodeService";
+import {
+  SURVEY_QUESTIONS,
+  normalizeComment,
+  type SurveyRatings,
+} from "@/lib/utils/survey";
 
 /**
- * 교육 만족도 조사 — 회차 단위 익명 설문.
+ * 교육 만족도 조사 — 회차 단위 익명 설문(기기 쪽).
  *
- * 설문은 **회차에 딸린 기능**이다. 관리자가 QR을 발급할 때 체크하면 링크에
- * `&s=1`이 붙고, 그 링크로 들어온 기기에서만 홈 화면에 설문 버튼이 뜬다.
- * 플래그는 회차 코드와 짝으로 저장하므로, 코드가 당일 자정에 풀리면 설문도
- * 같이 닫힌다(별도 정리 작업이 없다).
+ * **설문을 켜고 끄는 것은 서버다.** 관리자가 발급할 때 체크하면 회차 등록부에
+ * `survey: true`로 적히고, 기기는 `/api/session`에 물어 그 값을 받아 온다.
+ * 예전에는 링크의 `&s=1`이 그 역할을 했는데, 교육생이 주소창에 직접 붙여도
+ * 설문이 열려서 "설문을 받지 않기로 한 회차"에 응답이 쌓일 수 있었다.
  *
  * 개인정보를 받지 않는 것이 이 서비스의 전제다. 척도 문항은 숫자뿐이고,
  * 주관식은 길이를 제한하고 화면에서 "개인정보를 적지 마세요"를 고정 노출한다.
@@ -17,11 +21,18 @@ import { endOfToday, getGroupCode } from "@/lib/services/groupCodeService";
  *
  * 1인 1표는 익명 구조에서 보장할 수 없다 — 기기의 localStorage 기록으로
  * "같은 기기에서 같은 회차에 두 번"만 막는다. 브라우저 데이터를 지우면 다시
- * 응답할 수 있고, 그건 받아들이는 트레이드오프다.
+ * 응답할 수 있고, 그건 받아들이는 트레이드오프다. 다만 **대량 투입**은 서버가
+ * 회차당 상한으로 막는다(`SURVEY_RESPONSE_CAP`).
  */
 
-/** URL 쿼리 파라미터 이름 — 발급 시 체크했을 때만 `1`로 붙는다. */
-const QUERY_KEY = "s";
+export {
+  COMMENT_MAX_LENGTH,
+  RATING_SCALE,
+  SURVEY_QUESTIONS,
+  normalizeComment,
+  type SurveyRatingId,
+  type SurveyRatings,
+} from "@/lib/utils/survey";
 
 /** 설문 활성 플래그 localStorage 키. */
 const FLAG_KEY = "quiz:surveyEnabled";
@@ -32,31 +43,6 @@ const DONE_KEY = "quiz:surveyDone";
 /** 응답 완료 기록 보관 개수 — 같은 기기로 여러 교육에 와도 충분한 길이. */
 const DONE_LIMIT = 20;
 
-/** 주관식 최대 길이. 보안 규칙의 상한과 동일하게 유지할 것. */
-export const COMMENT_MAX_LENGTH = 200;
-
-/** 척도 선택지 — 1~5. */
-export const RATING_SCALE = [1, 2, 3, 4, 5] as const;
-
-/**
- * 척도 문항. **5가 항상 긍정**이어야 평균을 그대로 만족도로 읽을 수 있다.
- * 그래서 "난이도"처럼 중간이 좋은 문항은 넣지 않았다(평균이 뜻을 잃는다).
- *
- * id는 Firestore 문서의 키이자 보안 규칙의 화이트리스트다 — 바꾸려면
- * `firestore.rules`의 `isValidSurvey`도 같이 고쳐야 한다.
- */
-export const SURVEY_QUESTIONS = [
-  { id: "overall", label: "전반적으로 만족하셨나요?" },
-  { id: "useful", label: "교육 내용이 업무에 도움이 되었나요?" },
-  { id: "instructor", label: "강사의 설명이 이해하기 쉬웠나요?" },
-] as const;
-
-/** 척도 문항 id. */
-export type SurveyRatingId = (typeof SURVEY_QUESTIONS)[number]["id"];
-
-/** 문항 id → 1~5 점수. 세 문항 모두 필수다. */
-export type SurveyRatings = Record<SurveyRatingId, number>;
-
 /** 설문 활성 플래그 저장 형태. */
 interface SurveyFlagEntry {
   /** 설문이 켜진 회차 코드 */
@@ -66,28 +52,26 @@ interface SurveyFlagEntry {
 }
 
 /**
- * 진입 URL의 `?s=1`을 읽어 "이 회차는 설문을 받는다"고 저장한다.
+ * 서버가 알려 준 "이 회차가 설문을 받는지"를 기기에 반영한다.
  *
- * 같은 URL에 회차 코드(`?g=`)가 함께 있어야만 저장한다. 설문은 회차 단위이므로
- * 코드 없는 `?s=1`은 의미가 없고, 일반 사용자가 주소에 붙여도 아무 일이 없다.
+ * `survey`가 false면 **플래그를 지운다.** 설문을 끈 회차로 다시 들어왔는데
+ * 예전 플래그가 남아 버튼이 떠 있으면, 눌러 봐야 서버가 거부할 뿐이다.
  *
- * @param search `window.location.search` 형태의 문자열
- * @param code 같은 URL에서 캡처한 회차 코드(없으면 null)
- * @returns 설문을 켠 회차 코드, 아니면 null
+ * @returns 설문을 켠 회차 코드, 켜지 않았으면 null
  */
-export function captureSurveyFlagFromSearch(
-  search: string,
-  code: string | null,
-): string | null {
-  if (!code) return null;
-  try {
-    if (new URLSearchParams(search).get(QUERY_KEY) !== "1") return null;
-    setItem<SurveyFlagEntry>(FLAG_KEY, { code, expiresAt: endOfToday() });
-    notifyChange();
-    return code;
-  } catch {
+export function setSurveyForCode(code: string, survey: boolean): string | null {
+  if (!survey) {
+    const entry = getItem<SurveyFlagEntry | null>(FLAG_KEY, null);
+    if (entry?.code === code) {
+      removeItem(FLAG_KEY);
+      notifyChange();
+    }
     return null;
   }
+
+  setItem<SurveyFlagEntry>(FLAG_KEY, { code, expiresAt: endOfToday() });
+  notifyChange();
+  return code;
 }
 
 /**
@@ -137,23 +121,6 @@ export function clearSurveyState(): void {
  * 제출
  * ------------------------------------------------------------------ */
 
-/** 척도 점수가 1~5 정수인지. */
-function isValidRating(value: unknown): boolean {
-  return Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 5;
-}
-
-/**
- * 주관식 입력을 저장 가능한 형태로 다듬는다.
- * 제어문자를 지우고 공백을 접은 뒤 상한 길이로 자른다. 비면 빈 문자열.
- */
-export function normalizeComment(raw: string): string {
-  return raw
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, COMMENT_MAX_LENGTH);
-}
-
 /** 제출 실패 — 화면이 사용자에게 알려야 하는 에러. */
 export class SurveySubmitError extends Error {
   constructor(message: string) {
@@ -171,7 +138,10 @@ export interface SubmitSurveyOptions {
 }
 
 /**
- * 만족도 응답을 `survey_responses`에 1건 기록하고, 이 기기를 응답 완료로 적는다.
+ * 만족도 응답을 서버 라우트에 제출하고, 이 기기를 응답 완료로 적는다.
+ *
+ * Firestore에 직접 쓰지 않는다 — 발급된 회차인지, 설문을 받는 회차인지,
+ * 아직 교육 당일인지, 상한을 넘지 않았는지는 **서버만 판단할 수 있다**.
  *
  * 오답 로그(`logAnswers`)와 달리 **실패를 삼키지 않는다**. 사용자가 제출 버튼을
  * 누른 행위라서, 저장되지 않았는데 "감사합니다"를 띄우면 거짓말이 된다.
@@ -183,39 +153,39 @@ export async function submitSurvey({
   comment,
 }: SubmitSurveyOptions): Promise<void> {
   for (const { id } of SURVEY_QUESTIONS) {
-    if (!isValidRating(ratings[id])) {
+    const value = ratings[id];
+    if (!Number.isInteger(value) || value < 1 || value > 5) {
       throw new SurveySubmitError("모든 문항에 답해 주세요.");
     }
   }
 
-  const db = getDb();
-  if (!db) {
-    throw new SurveySubmitError(
-      "지금은 응답을 저장할 수 없습니다. 잠시 후 다시 시도해 주세요.",
-    );
-  }
-
-  const text = normalizeComment(comment ?? "");
-
+  let res: Response;
   try {
-    const { collection, addDoc, serverTimestamp } = await import(
-      "firebase/firestore"
-    );
-    await addDoc(collection(db, "survey_responses"), {
-      g: code,
-      ratings: {
-        overall: ratings.overall,
-        useful: ratings.useful,
-        instructor: ratings.instructor,
-      },
-      createdAt: serverTimestamp(),
-      // 빈 주관식은 필드 자체를 넣지 않는다(보안 규칙상 선택 필드).
-      ...(text ? { comment: text } : {}),
+    res = await fetch("/api/survey", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        code,
+        ratings,
+        comment: normalizeComment(comment ?? ""),
+      }),
     });
   } catch {
     throw new SurveySubmitError(
       "응답을 저장하지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요.",
     );
+  }
+
+  if (!res.ok) {
+    let message = "응답을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    try {
+      const body = (await res.json()) as { error?: unknown };
+      if (typeof body.error === "string") message = body.error;
+    } catch {
+      // JSON이 아닌 응답 — 기본 문구로
+    }
+    throw new SurveySubmitError(message);
   }
 
   markSurveyDone(code);

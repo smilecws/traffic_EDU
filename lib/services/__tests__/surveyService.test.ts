@@ -5,13 +5,13 @@ import {
 } from "@/lib/services/groupCodeService";
 import {
   COMMENT_MAX_LENGTH,
-  captureSurveyFlagFromSearch,
   clearSurveyState,
   getSurveyCode,
   getSurveyStateSnapshot,
   isSurveyDone,
   markSurveyDone,
   normalizeComment,
+  setSurveyForCode,
 } from "@/lib/services/surveyService";
 
 beforeEach(() => {
@@ -19,39 +19,44 @@ beforeEach(() => {
   clearSurveyState();
 });
 
-describe("captureSurveyFlagFromSearch", () => {
-  it("?s=1과 회차 코드가 함께 오면 설문을 켠다", () => {
+describe("setSurveyForCode", () => {
+  it("서버가 켠 회차는 설문이 열린다", () => {
     saveGroupCode("1124-chuncheon-7k2");
-    expect(
-      captureSurveyFlagFromSearch("?g=1124-chuncheon-7k2&s=1", "1124-chuncheon-7k2"),
-    ).toBe("1124-chuncheon-7k2");
+    expect(setSurveyForCode("1124-chuncheon-7k2", true)).toBe(
+      "1124-chuncheon-7k2",
+    );
     expect(getSurveyCode()).toBe("1124-chuncheon-7k2");
   });
 
-  it("회차 코드가 없으면 무시한다 — 설문은 회차 단위다", () => {
-    expect(captureSurveyFlagFromSearch("?s=1", null)).toBeNull();
-    expect(getSurveyCode()).toBeNull();
-  });
-
-  it("?s=가 없으면 설문을 켜지 않는다(일반 회차 링크)", () => {
+  it("서버가 끈 회차는 열리지 않는다 — 주소에 s=1을 붙여도 소용없다", () => {
     saveGroupCode("1124-chuncheon-7k2");
-    expect(
-      captureSurveyFlagFromSearch("?g=1124-chuncheon-7k2", "1124-chuncheon-7k2"),
-    ).toBeNull();
+    expect(setSurveyForCode("1124-chuncheon-7k2", false)).toBeNull();
     expect(getSurveyCode()).toBeNull();
   });
 
-  it("?s=1 이외의 값은 켜지 않는다", () => {
+  it("켜졌던 회차를 서버가 끄면 남은 플래그를 지운다", () => {
     saveGroupCode("1124a");
-    captureSurveyFlagFromSearch("?g=1124a&s=0", "1124a");
+    setSurveyForCode("1124a", true);
+    expect(getSurveyCode()).toBe("1124a");
+
+    setSurveyForCode("1124a", false);
     expect(getSurveyCode()).toBeNull();
+    expect(window.localStorage.getItem("quiz:surveyEnabled")).toBeNull();
+  });
+
+  it("다른 회차를 끈다고 해서 지금 플래그를 건드리지 않는다", () => {
+    saveGroupCode("1124a");
+    setSurveyForCode("1124a", true);
+
+    setSurveyForCode("1125b", false);
+    expect(getSurveyCode()).toBe("1124a");
   });
 });
 
 describe("getSurveyCode", () => {
   it("회차 코드가 풀리면 설문도 닫힌다", () => {
     saveGroupCode("1124a");
-    captureSurveyFlagFromSearch("?g=1124a&s=1", "1124a");
+    setSurveyForCode("1124a", true);
     expect(getSurveyCode()).toBe("1124a");
 
     // 자정 경과 — 회차 코드가 만료되면 설문도 더는 열리지 않는다.
@@ -61,7 +66,7 @@ describe("getSurveyCode", () => {
 
   it("다른 회차 QR로 다시 들어오면 이전 설문 플래그는 무효다", () => {
     saveGroupCode("1124a");
-    captureSurveyFlagFromSearch("?g=1124a&s=1", "1124a");
+    setSurveyForCode("1124a", true);
 
     // 설문 없는 다른 회차로 교체 — 플래그는 남아 있지만 코드가 다르다.
     saveGroupCode("1124b");
@@ -70,7 +75,7 @@ describe("getSurveyCode", () => {
 
   it("만료된 플래그는 정리한다", () => {
     saveGroupCode("1124a");
-    captureSurveyFlagFromSearch("?g=1124a&s=1", "1124a");
+    setSurveyForCode("1124a", true);
     window.localStorage.setItem(
       "quiz:surveyEnabled",
       JSON.stringify({ code: "1124a", expiresAt: Date.now() - 1 }),
@@ -100,13 +105,13 @@ describe("markSurveyDone / isSurveyDone", () => {
 describe("getSurveyStateSnapshot", () => {
   it("값이 그대로면 같은 참조를 돌려준다(무한 렌더 방지)", () => {
     saveGroupCode("1124a");
-    captureSurveyFlagFromSearch("?g=1124a&s=1", "1124a");
+    setSurveyForCode("1124a", true);
     expect(getSurveyStateSnapshot()).toBe(getSurveyStateSnapshot());
   });
 
   it("응답을 마치면 done이 켜진다", () => {
     saveGroupCode("1124a");
-    captureSurveyFlagFromSearch("?g=1124a&s=1", "1124a");
+    setSurveyForCode("1124a", true);
     expect(getSurveyStateSnapshot()).toEqual({ code: "1124a", done: false });
 
     markSurveyDone("1124a");
