@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, type Query } from "firebase-admin/firestore";
 import { ADMIN_COOKIE, verifySessionValue } from "@/lib/server/adminAuth";
 import { getAdminDb } from "@/lib/server/firebaseAdmin";
 import { DATE_PATTERN, kstDayBoundary } from "@/lib/utils/kstDate";
@@ -13,9 +13,11 @@ import { DATE_PATTERN, kstDayBoundary } from "@/lib/utils/kstDate";
  *
  * 두 가지 범위(scope)를 지원한다.
  * - 회차별(기본): `GET /api/admin/stats?code=1124a&from=2026-11-24&to=2026-11-24`
- * - 전체 기간·전체 회차: `GET /api/admin/stats?scope=all`
- *   회차 코드·날짜 조건 없이 `answer_logs` 전체를 읽는다. 회차 코드 없이
- *   들어온 응답(코드 미입력 교육생·일반 사용자)까지 포함된다.
+ * - 회차 무관(`scope=all`): 회차 코드 조건 없이 읽는다. 회차 코드 없이 들어온
+ *   응답(코드 미입력 교육생·일반 사용자)까지 포함된다.
+ *   - 기간 지정: `?scope=all&from=2026-11-01&to=2026-11-23`
+ *   - 전체 기간: `?scope=all` (날짜를 비우면 컬렉션 전체)
+ *   날짜는 둘 다 주거나 둘 다 비워야 한다. 하나만 오면 400.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,17 +36,26 @@ export async function GET(request: NextRequest) {
   const from = params.get("from") ?? "";
   const to = params.get("to") ?? "";
 
-  // 전체 범위 조회는 코드·날짜를 받지 않는다(받아도 무시한다).
-  if (scope === "group") {
-    if (!CODE_PATTERN.test(code)) {
+  // 회차 무관 조회에서 날짜는 선택이다 — 비우면 전체 기간.
+  const hasRange = scope === "all" && (from !== "" || to !== "");
+
+  if (scope === "group" || hasRange) {
+    if (scope === "group" && !CODE_PATTERN.test(code)) {
       return NextResponse.json(
         { error: "회차 코드 형식이 올바르지 않습니다." },
         { status: 400 },
       );
     }
+    // hasRange일 때 한쪽만 온 경우도 여기서 걸린다(빈 문자열은 패턴 불통과).
     if (!DATE_PATTERN.test(from) || !DATE_PATTERN.test(to)) {
       return NextResponse.json(
         { error: "날짜 형식이 올바르지 않습니다." },
+        { status: 400 },
+      );
+    }
+    if (from > to) {
+      return NextResponse.json(
+        { error: "시작일이 종료일보다 늦습니다." },
         { status: 400 },
       );
     }
@@ -63,24 +74,20 @@ export async function GET(request: NextRequest) {
 
   let snapshot;
   try {
-    const logs = db.collection("answer_logs");
-    snapshot =
-      scope === "all"
-        ? // 전체 기간·전체 회차 — 조건 없이 컬렉션 전체. 색인이 필요 없다.
-          await logs.get()
-        : await logs
-            .where("g", "==", code)
-            .where(
-              "createdAt",
-              ">=",
-              Timestamp.fromDate(kstDayBoundary(from, "start")),
-            )
-            .where(
-              "createdAt",
-              "<=",
-              Timestamp.fromDate(kstDayBoundary(to, "end")),
-            )
-            .get();
+    // 회차 조건(g) → 기간 조건(createdAt) 순으로 쌓는다. 회차 없이 기간만 거는
+    // 조회는 createdAt 단일 필드 색인으로 충분해 복합 색인이 필요 없다.
+    let query: Query = db.collection("answer_logs");
+    if (scope === "group") query = query.where("g", "==", code);
+    if (scope === "group" || hasRange) {
+      query = query
+        .where(
+          "createdAt",
+          ">=",
+          Timestamp.fromDate(kstDayBoundary(from, "start")),
+        )
+        .where("createdAt", "<=", Timestamp.fromDate(kstDayBoundary(to, "end")));
+    }
+    snapshot = await query.get();
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
     // 복합 색인 미생성 — 배포 명령을 안내한다.
@@ -123,9 +130,15 @@ export async function GET(request: NextRequest) {
   }));
 
   return NextResponse.json(
-    scope === "all"
-      ? { scope, code: "", from: "", to: "", sessions: snapshot.size, counts }
-      : { scope, code, from, to, sessions: snapshot.size, counts },
+    {
+      scope,
+      code: scope === "all" ? "" : code,
+      // 전체 기간 조회는 빈 문자열 — 화면이 "전체 기간"으로 표시한다.
+      from: scope === "group" || hasRange ? from : "",
+      to: scope === "group" || hasRange ? to : "",
+      sessions: snapshot.size,
+      counts,
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

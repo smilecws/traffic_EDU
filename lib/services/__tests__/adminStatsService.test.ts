@@ -163,8 +163,14 @@ describe("loadAllStats", () => {
   /** 호출된 URL을 기록해 두는 상자 — 질의 문자열을 검증하는 데 쓴다. */
   const requested: string[] = [];
 
-  /** 전체 범위 응답 — code·from·to가 빈 문자열로 온다. */
-  function mockAllStats(counts: unknown, sessions = 540) {
+  /**
+   * 회차 무관 응답. code는 항상 빈 문자열이고, from·to는 기간을 지정했을 때만
+   * 채워진다(라우트와 같은 규칙).
+   */
+  function mockAllStats(
+    counts: unknown,
+    { sessions = 540, from = "", to = "" } = {},
+  ) {
     requested.length = 0;
     vi.stubGlobal(
       "fetch",
@@ -174,8 +180,8 @@ describe("loadAllStats", () => {
           JSON.stringify({
             scope: "all",
             code: "",
-            from: "",
-            to: "",
+            from,
+            to,
             sessions,
             counts,
           }),
@@ -185,7 +191,7 @@ describe("loadAllStats", () => {
     );
   }
 
-  it("코드·날짜 없이 scope=all로만 조회한다", async () => {
+  it("기간을 주지 않으면 scope=all만 보낸다(전체 기간)", async () => {
     mockAllStats([{ questionId: "q1", attempts: 9, wrong: 9 }]);
 
     await loadAllStats({ questions, classifier });
@@ -196,7 +202,51 @@ describe("loadAllStats", () => {
     expect(requested[0]).not.toContain("from=");
   });
 
-  it("전체 집계도 회차와 같은 모양으로 가공한다", async () => {
+  it("기간을 주면 from·to를 함께 보낸다", async () => {
+    mockAllStats([], { from: "2026-11-01", to: "2026-11-23" });
+
+    await loadAllStats({
+      from: "2026-11-01",
+      to: "2026-11-23",
+      questions,
+      classifier,
+    });
+
+    expect(requested[0]).toContain("scope=all");
+    expect(requested[0]).toContain("from=2026-11-01");
+    expect(requested[0]).toContain("to=2026-11-23");
+  });
+
+  it("한쪽만 있는 기간은 싣지 않는다(서버 400 방지)", async () => {
+    mockAllStats([]);
+
+    await loadAllStats({ from: "2026-11-01", questions, classifier });
+
+    expect(requested[0]).not.toContain("from=");
+    expect(requested[0]).not.toContain("to=");
+  });
+
+  it("기간 조회 결과는 from·to를 그대로 돌려준다", async () => {
+    mockAllStats([{ questionId: "q1", attempts: 4, wrong: 1 }], {
+      from: "2026-11-01",
+      to: "2026-11-23",
+      sessions: 42,
+    });
+
+    const stats = await loadAllStats({
+      from: "2026-11-01",
+      to: "2026-11-23",
+      questions,
+      classifier,
+    });
+
+    expect(stats.scope).toBe("all");
+    expect(stats.from).toBe("2026-11-01");
+    expect(stats.to).toBe("2026-11-23");
+    expect(stats.sessions).toBe(42);
+  });
+
+  it("회차 무관 집계도 회차와 같은 모양으로 가공한다", async () => {
     mockAllStats([
       { questionId: "q1", attempts: 10, wrong: 2 },
       { questionId: "q2", attempts: 10, wrong: 8 },
@@ -214,7 +264,7 @@ describe("loadAllStats", () => {
     expect(stats.questions[0].question?.explanation).toBe("해설 둘");
   });
 
-  it("code·from·to는 빈 문자열로 둔다(화면이 전체 범위로 표시)", async () => {
+  it("전체 기간 조회는 code·from·to가 빈 문자열이다", async () => {
     mockAllStats([]);
 
     const stats = await loadAllStats({ questions, classifier });
