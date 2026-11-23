@@ -51,7 +51,7 @@ export function SurveyResultCard({
           이 조건에서는 만족도 응답이 없습니다.
         </p>
         <p className="text-xs leading-relaxed text-slate-400">
-          회차 발급 때 &ldquo;만족도 조사 함께 받기&rdquo;를 체크한 QR로 들어온
+          교육반 발급 때 &ldquo;만족도 조사 함께 받기&rdquo;를 체크한 QR로 들어온
           교육생만 응답할 수 있습니다.
         </p>
       </Card>

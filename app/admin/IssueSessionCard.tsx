@@ -31,7 +31,7 @@ function formatIssuedAt(ms: number): string {
 const noopSubscribe = () => () => {};
 
 /**
- * 회차 발급 카드 — 지점을 적고 버튼을 누르면 앱이 코드를 만들어 QR까지 띄운다.
+ * 교육반 관리 카드 — 교육반을 적고 버튼을 누르면 앱이 코드를 만들어 QR까지 띄운다.
  *
  * 손으로 코드를 타이핑하던 방식에서 넘어온 이유는 세 가지다: 같은 날 두 지점이
  * 같은 코드를 써서 통계가 섞이는 충돌, `1124-soeul`처럼 조용히 회차를 쪼개는
@@ -81,7 +81,7 @@ export function IssueSessionCard() {
   function handleIssue() {
     const next = issueGroupCode(branch);
     if (!next) {
-      setError("지점을 알아볼 수 없습니다. 지역명이나 영문으로 적어 주세요.");
+      setError("교육반을 알아볼 수 없습니다. 교육반 이름이나 영문으로 적어 주세요.");
       return;
     }
     const entry: IssuedGroupCode = {
@@ -101,22 +101,22 @@ export function IssueSessionCard() {
     <div className="space-y-5">
       <Card className="space-y-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-semibold text-slate-900">회차 발급</h2>
+          <h2 className="text-sm font-semibold text-slate-900">교육반 관리</h2>
           <p className="text-xs leading-relaxed text-slate-400">
             교육 시작 전에 발급하고 QR을 띄우세요. 코드는 앱이 만듭니다 — 같은
-            날 다른 지점과 겹치거나 오타로 통계가 쪼개지지 않습니다.
+            날 다른 교육반과 겹치거나 오타로 통계가 쪼개지지 않습니다.
           </p>
         </div>
 
         <label className="block space-y-1">
-          <span className="text-xs font-medium text-slate-600">지점</span>
+          <span className="text-xs font-medium text-slate-600">교육반</span>
           <input
             value={branch}
             onChange={(e) => {
               setDraft(e.target.value);
               setError(null);
             }}
-            placeholder="예: 춘천"
+            placeholder="예: 음주, 교수자"
             className="w-full rounded-xl border border-[#ebe9f5] px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
           />
         </label>
@@ -155,7 +155,7 @@ export function IssueSessionCard() {
           onClick={handleIssue}
         >
           <Ticket size={18} strokeWidth={1.5} />
-          회차 발급
+          교육반 발급
         </Button>
 
         {error && <p className="text-sm text-red-500">{error}</p>}

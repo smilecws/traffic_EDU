@@ -125,11 +125,17 @@ const SUFFIX_LENGTH = 3;
 const SUFFIX_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";
 
 /**
- * 지점명 한글 → 코드용 슬러그.
+ * 교육반·지점명 한글 → 코드용 슬러그.
  * 코드 형식이 `[a-z0-9-]`뿐이라 한글을 담을 수 없으므로, 강사가 한글로 입력해도
- * 코드가 만들어지도록 자주 쓰는 지역명을 미리 매핑해 둔다.
+ * 코드가 만들어지도록 자주 쓰는 이름을 미리 매핑해 둔다. 표에 없는 한글은
+ * 슬러그가 비어 발급 버튼이 잠기므로, 새 교육반이 생기면 여기에 한 줄 추가한다.
  */
 const BRANCH_SLUGS: Record<string, string> = {
+  // 교육반
+  음주: "eumju",
+  교수자: "gyosuja",
+
+  // 지점
   서울: "seoul",
   춘천: "chuncheon",
   원주: "wonju",

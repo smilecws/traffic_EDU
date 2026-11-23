@@ -11,9 +11,15 @@ import { AdminSessionExpiredError } from "@/lib/services/adminStatsService";
  * 여기서 한다. 숫자가 틀리면 강사가 보는 만족도 점수가 틀린다.
  */
 
-/** 분포만 돌려주는 가짜 라우트. 요청 URL을 들여다볼 수 있게 fn을 돌려준다. */
+/**
+ * 분포만 돌려주는 가짜 라우트. 요청 URL을 들여다볼 수 있게 fn을 돌려준다.
+ *
+ * 호출 기록을 읽으려면 fetch와 같은 시그니처를 타입으로 줘야 한다 — 생략하면
+ * `mock.calls[0]`이 빈 튜플로 추론되어 `calls[0][0]`이 타입 오류가 된다.
+ * 구현은 인자를 쓰지 않으므로 타입 인자로만 선언한다(미사용 인자 경고 방지).
+ */
 function mockSurveyFetch(body: Record<string, unknown>, status = 200) {
-  return vi.fn(async () => {
+  return vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => {
     return new Response(JSON.stringify(body), {
       status,
       headers: { "Content-Type": "application/json" },

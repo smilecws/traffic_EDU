@@ -61,7 +61,7 @@ function recentStart(n: number): string {
 }
 
 /**
- * 관리자 화면 — 교육 회차 발급과 회차별 오답률 조회. 일반 내비게이션에는 노출하지 않는다.
+ * 관리자 화면 — 교육반 발급과 회차별 오답률 조회. 일반 내비게이션에는 노출하지 않는다.
  *
  * 비밀번호 검증과 Firestore 읽기는 모두 서버 라우트에서 한다.
  * 이 화면은 결과를 받아 그리는 역할만 한다.
@@ -101,7 +101,7 @@ export default function AdminPage() {
   return (
     <main className="mx-auto w-full max-w-md space-y-5 px-4 py-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-lg font-bold text-slate-900">교육 회차 관리</h1>
+        <h1 className="text-lg font-bold text-slate-900">관리자 페이지</h1>
         {phase === "ready" && (
           <Button variant="ghost" size="sm" onClick={handleSignOut}>
             <LogOut size={16} strokeWidth={1.5} />
@@ -378,7 +378,7 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
       >
         {(
           [
-            ["issue", "회차 발급"],
+            ["issue", "교육반 관리"],
             ["stats", "통계 조회"],
           ] as const
         ).map(([value, label]) => (
