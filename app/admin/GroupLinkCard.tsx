@@ -63,10 +63,10 @@ export function GroupLinkCard({ code, survey = false }: GroupLinkCardProps) {
     return (
       <Card>
         <p className="text-sm text-slate-600">
-          교육반을 발급하면 교육생 배포용 링크와 QR이 여기에 표시됩니다.
+          회차를 발급하면 교육생 배포용 링크와 QR이 여기에 표시됩니다.
           <br />
           <span className="text-xs text-slate-400">
-            발급 코드 형식: <code>MMDD-교육반-랜덤3자</code> (예: 1124-eumju-7k2)
+            발급 코드 형식: <code>MMDD-랜덤6자</code> (예: 1124-7k2m9p)
           </span>
         </p>
       </Card>

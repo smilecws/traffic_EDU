@@ -3,7 +3,7 @@ import {
   Timestamp,
   type Firestore,
 } from "firebase-admin/firestore";
-import { issueGroupCode, normalizeBranchSlug } from "@/lib/utils/groupCode";
+import { issueGroupCode, normalizeBranchName } from "@/lib/utils/groupCode";
 import { kstDayBoundary, toKstDateString } from "@/lib/utils/kstDate";
 
 /**
@@ -47,7 +47,11 @@ const ISSUE_RETRIES = 5;
 /** 등록부에 적히는 회차 1건. */
 export interface SessionRecord {
   code: string;
-  /** 발급 시 입력한 교육반 원문(한글일 수 있다 — 표시용). */
+  /**
+   * 발급 시 적어 둔 교육반·교수자 이름. **선택 입력이라 비어 있을 수 있다.**
+   * 회차를 식별하는 것은 코드이고, 이 값은 관리자가 목록에서 알아보기 위한
+   * 메모다. 어떤 글자든 들어올 수 있다(한글·영문·숫자).
+   */
   branch: string;
   /** 만족도 조사를 함께 받는 회차인지. **이 값만이 설문을 켜고 끈다.** */
   survey: boolean;
@@ -88,25 +92,26 @@ function toRecord(
  * 새 회차를 발급해 등록부에 적는다.
  *
  * 코드 생성은 `issueGroupCode`가 하고, 여기서는 **이미 쓰인 코드인지 확인**한
- * 뒤 적는다. 랜덤 접미사가 겹칠 확률은 낮지만 0은 아니고, 겹치면 두 교육반의
- * 통계가 한 코드로 합쳐지기 때문이다.
+ * 뒤 적는다. 랜덤 접미사가 겹칠 확률은 매우 낮지만 0은 아니고, 겹치면 두
+ * 회차의 통계가 한 코드로 합쳐지기 때문이다.
  *
- * @returns 등록된 회차. 교육반 이름을 슬러그로 바꿀 수 없으면 null.
+ * 이름은 **선택**이다. 비워도 발급된다 — 코드가 회차를 식별하고, 이름은
+ * 관리자용 메모일 뿐이다.
+ *
+ * @returns 등록된 회차. 코드를 끝내 확보하지 못하면 null(사실상 일어나지 않는다).
  */
 export async function issueSession(
   db: Firestore,
-  options: { branch: string; survey: boolean },
+  options: { branch?: string; survey: boolean },
   now: Date = new Date(),
 ): Promise<SessionRecord | null> {
-  const branch = options.branch.trim();
-  if (!normalizeBranchSlug(branch)) return null;
+  const branch = normalizeBranchName(options.branch ?? "");
 
   const date = toKstDateString(now.getTime());
   const expiresAt = kstDayBoundary(date, "end");
 
   for (let attempt = 0; attempt < ISSUE_RETRIES; attempt += 1) {
-    const code = issueGroupCode(branch, now);
-    if (!code) return null;
+    const code = issueGroupCode(now);
 
     const ref = db.collection(SESSIONS_COLLECTION).doc(code);
     try {

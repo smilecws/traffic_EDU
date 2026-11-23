@@ -27,9 +27,8 @@ vi.mock("firebase-admin/firestore", () => {
 });
 
 const { Timestamp } = await import("firebase-admin/firestore");
-const { recordSurveyResponse, SURVEY_RESPONSE_CAP } = await import(
-  "@/lib/server/sessionRegistry"
-);
+const { issueSession, recordSurveyResponse, SURVEY_RESPONSE_CAP } =
+  await import("@/lib/server/sessionRegistry");
 
 /** 유효한 회차 문서 한 장. 필요한 필드만 바꿔 쓴다. */
 function sessionDoc(overrides: Record<string, unknown> = {}) {
@@ -159,5 +158,85 @@ describe("recordSurveyResponse", () => {
     expect(created[0].data).toMatchObject({
       comment: "실습 시간이 길면 좋겠습니다",
     });
+  });
+});
+
+/**
+ * 발급용 축소 Firestore. `failFirst`번째까지의 create는 "이미 있는 코드"로
+ * 실패시켜 재시도 경로를 확인한다.
+ */
+function makeIssueDb(failFirst = 0) {
+  const created: { id: string; data: Record<string, unknown> }[] = [];
+  let attempts = 0;
+
+  const db = {
+    collection: () => ({
+      doc: (id: string) => ({
+        id,
+        create: async (data: Record<string, unknown>) => {
+          attempts += 1;
+          if (attempts <= failFirst) throw new Error("ALREADY_EXISTS");
+          created.push({ id, data });
+        },
+      }),
+    }),
+  };
+
+  return {
+    db: db as unknown as Parameters<typeof issueSession>[0],
+    created,
+    get attempts() {
+      return attempts;
+    },
+  };
+}
+
+describe("issueSession", () => {
+  /** KST 2026-11-24 10:00 */
+  const nov24 = new Date(Date.UTC(2026, 10, 24, 1, 0, 0));
+
+  it("이름 없이도 발급된다 — 이름은 선택이다", async () => {
+    const { db, created } = makeIssueDb();
+    const session = await issueSession(db, { survey: false }, nov24);
+
+    expect(session).not.toBeNull();
+    expect(session?.branch).toBe("");
+    expect(session?.code).toMatch(/^1124-[a-z0-9]{6}$/);
+    expect(created[0].data).toMatchObject({ branch: "", survey: false });
+  });
+
+  it("표에 없는 한글 이름도 그대로 적는다 — 발급이 막히지 않는다", async () => {
+    const { db, created } = makeIssueDb();
+    const session = await issueSession(
+      db,
+      { branch: "  법규위반반  2교시 ", survey: true },
+      nov24,
+    );
+
+    // 이름은 다듬어서 저장하되, 코드에는 섞이지 않는다.
+    expect(session?.branch).toBe("법규위반반 2교시");
+    expect(session?.code).toMatch(/^1124-[a-z0-9]{6}$/);
+    expect(created[0].data).toMatchObject({ branch: "법규위반반 2교시" });
+  });
+
+  it("코드가 이미 쓰였으면 다시 뽑는다", async () => {
+    // attempts는 getter라 구조분해하면 그 시점 값이 박힌다 — 객체째로 들고 본다.
+    const issuer = makeIssueDb(2);
+    const session = await issueSession(issuer.db, { survey: false }, nov24);
+
+    expect(session).not.toBeNull();
+    expect(issuer.attempts).toBe(3);
+    expect(issuer.created).toHaveLength(1);
+  });
+
+  it("설문 여부와 만료 시각을 함께 적는다", async () => {
+    const { db, created } = makeIssueDb();
+    const session = await issueSession(db, { survey: true }, nov24);
+
+    expect(session?.survey).toBe(true);
+    expect(session?.date).toBe("2026-11-24");
+    // KST 11-24 23:59:59.999 = UTC 11-24 14:59:59.999
+    expect(session?.expiresAt).toBe(Date.UTC(2026, 10, 24, 14, 59, 59, 999));
+    expect(created[0].data).toMatchObject({ surveyCount: 0, date: "2026-11-24" });
   });
 });

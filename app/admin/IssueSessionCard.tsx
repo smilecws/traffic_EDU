@@ -5,7 +5,7 @@ import { MessageSquareHeart, Ticket } from "lucide-react";
 import {
   getAdminBranch,
   getAdminSurveyFlag,
-  normalizeBranchSlug,
+  normalizeBranchName,
   saveAdminBranch,
   saveAdminSurveyFlag,
 } from "@/lib/services/groupCodeService";
@@ -70,7 +70,8 @@ export function IssueSessionCard({
   const survey = surveyDraft ?? storedSurvey;
 
   const branch = draft ?? storedBranch;
-  const slug = normalizeBranchSlug(branch);
+  /** 저장될 이름 — 비어 있어도 된다(발급을 막지 않는다). */
+  const branchName = normalizeBranchName(branch);
 
   /** 서버에서 읽은 발급 내역. */
   const [sessions, setSessions] = useState<AdminSession[]>([]);
@@ -117,11 +118,11 @@ export function IssueSessionCard({
     sessions.find((entry) => entry.code === code)?.survey ?? false;
 
   async function handleIssue() {
-    if (!slug || busy) return;
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const issued = await issueSession({ branch: branch.trim(), survey });
+      const issued = await issueSession({ branch: branchName, survey });
       setSessions((prev) => [
         issued,
         ...prev.filter((e) => e.code !== issued.code),
@@ -147,29 +148,30 @@ export function IssueSessionCard({
           <h2 className="text-sm font-semibold text-slate-900">교육반 관리</h2>
           <p className="text-xs leading-relaxed text-slate-400">
             교육 시작 전에 발급하고 QR을 띄우세요. 코드는 서버가 만듭니다 — 같은
-            날 다른 교육반과 겹치거나 오타로 통계가 쪼개지지 않습니다.
+            날 다른 회차와 겹치거나 오타로 통계가 쪼개지지 않습니다.
           </p>
         </div>
 
         <label className="block space-y-1">
-          <span className="text-xs font-medium text-slate-600">교육반</span>
+          <span className="text-xs font-medium text-slate-600">
+            교육반 · 교수자{" "}
+            <span className="font-normal text-slate-400">(선택)</span>
+          </span>
           <input
             value={branch}
             onChange={(e) => {
               setDraft(e.target.value);
               setError(null);
             }}
-            placeholder="예: 음주, 교수자"
+            placeholder="예: 음주반 / 홍길동 교수자"
             className="w-full rounded-xl border border-[#ebe9f5] px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
           />
         </label>
 
-        {slug && (
-          <p className="text-xs text-slate-400">
-            발급될 코드 형태:{" "}
-            <code className="text-slate-600">{`MMDD-${slug}-***`}</code>
-          </p>
-        )}
+        <p className="text-xs leading-relaxed text-slate-400">
+          나중에 목록에서 알아보기 위한 메모입니다. 비워도 발급됩니다 — 회차를
+          구분하는 것은 코드입니다.
+        </p>
 
         {/* 설문 여부는 발급 시점에 고정된다 — 서버 회차 기록에 함께 적힌다. */}
         <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[#ebe9f5] p-3 transition-colors hover:bg-[#f5f4fb]">
@@ -194,7 +196,7 @@ export function IssueSessionCard({
         <Button
           size="lg"
           className="w-full"
-          disabled={!slug || busy}
+          disabled={busy}
           onClick={() => void handleIssue()}
         >
           <Ticket size={18} strokeWidth={1.5} />

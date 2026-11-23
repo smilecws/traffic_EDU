@@ -20,7 +20,7 @@ export {
   BRANCH_MAX_LENGTH,
   buildGroupLink,
   issueGroupCode,
-  normalizeBranchSlug,
+  normalizeBranchName,
   normalizeGroupCode,
 } from "@/lib/utils/groupCode";
 

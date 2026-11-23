@@ -1,12 +1,17 @@
 /**
- * 교육 회차 코드의 순수 로직 — 형식 검증, 교육반 슬러그, 코드 생성, 공유 링크.
+ * 교육 회차 코드의 순수 로직 — 형식 검증, 코드 생성, 이름 정리, 공유 링크.
  *
  * localStorage도 Firestore도 건드리지 않는다. **서버 라우트와 브라우저가 같은
- * 규칙을 써야 하기 때문에** 별도 모듈로 분리했다. 회차 발급은 이제 서버에서
+ * 규칙을 써야 하기 때문에** 별도 모듈로 분리했다. 회차 발급은 서버에서
  * 일어나고(`/api/admin/sessions`), 브라우저는 같은 함수로 형식만 확인한다.
  *
  * 규칙이 세 곳(여기·`firestore.rules`·서버 라우트)에서 어긋나면 "발급은 됐는데
  * 저장이 안 되는" 조용한 실패가 난다. 형식 상수는 반드시 여기서만 정의한다.
+ *
+ * **코드에는 이름이 들어가지 않는다.** 예전에는 교육반 이름을 로마자로 바꿔
+ * 코드에 심었는데, 그러려면 한글 → 로마자 표를 들고 있어야 했고 표에 없는
+ * 이름은 발급 자체가 막혔다. 이름을 적을 곳(회차 등록부)이 생긴 뒤로는 그럴
+ * 이유가 없다 — 코드는 식별자, 이름은 표시용으로 완전히 갈라 둔다.
  */
 
 import { toKstDateString } from "@/lib/utils/kstDate";
@@ -27,87 +32,23 @@ export function normalizeGroupCode(raw: string): string | null {
 }
 
 /* ------------------------------------------------------------------ *
- * 교육반 슬러그
+ * 코드 생성
  * ------------------------------------------------------------------ */
 
-/** 교육반 슬러그 최대 길이 — `MMDD-<slug>-<rand3>` 전체가 24자를 넘지 않도록. */
-export const BRANCH_MAX_LENGTH = 24 - "1124-".length - "-abc".length; // 15
-
-/** 랜덤 접미사 길이. */
-const SUFFIX_LENGTH = 3;
+/**
+ * 랜덤 접미사 길이.
+ *
+ * 코드를 아는 사람은 그 회차에 응답을 보탤 수 있으므로, 날짜를 알면 찍어 볼 수
+ * 있을 만큼 짧으면 안 된다. 6자면 31^6 ≈ 8.9억 가지라 하루치를 훑는 것이
+ * 의미가 없어지고, `1124-7k2m9p` 정도는 불러 주거나 받아적기에도 부담 없다.
+ */
+const SUFFIX_LENGTH = 6;
 
 /**
  * 혼동하기 쉬운 글자(0·o·1·l·i)를 뺀 알파벳.
  * 코드를 눈으로 받아적거나 구두로 전달할 때의 오류를 줄인다.
  */
 const SUFFIX_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";
-
-/**
- * 교육반·지점명 한글 → 코드용 슬러그.
- * 코드 형식이 `[a-z0-9-]`뿐이라 한글을 담을 수 없으므로, 자주 쓰는 이름을 미리
- * 매핑해 둔다. 표에 없는 한글은 슬러그가 비어 발급이 거부되므로, 새 교육반이
- * 생기면 여기에 한 줄 추가한다.
- */
-const BRANCH_SLUGS: Record<string, string> = {
-  // 교육반
-  음주: "eumju",
-  교수자: "gyosuja",
-
-  // 지점
-  서울: "seoul",
-  춘천: "chuncheon",
-  원주: "wonju",
-  강릉: "gangneung",
-  부산: "busan",
-  대구: "daegu",
-  인천: "incheon",
-  광주: "gwangju",
-  대전: "daejeon",
-  울산: "ulsan",
-  세종: "sejong",
-  수원: "suwon",
-  성남: "seongnam",
-  용인: "yongin",
-  고양: "goyang",
-  의정부: "uijeongbu",
-  청주: "cheongju",
-  천안: "cheonan",
-  전주: "jeonju",
-  포항: "pohang",
-  창원: "changwon",
-  제주: "jeju",
-};
-
-/**
- * 교육반 입력값을 코드에 넣을 슬러그로 바꾼다. 비울 수 없으면 null.
- *
- * - 한글 이름은 표에서 찾아 로마자로 바꾼다(`서울교육장` → `seoul`).
- * - 그 밖의 입력은 소문자화 후 `[a-z0-9-]`만 남긴다(`Seoul 2반` → `seoul-2`).
- */
-export function normalizeBranchSlug(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  // 한글 이름 — 정확히 일치하거나 입력에 포함돼 있으면 그 슬러그를 쓴다.
-  const direct = BRANCH_SLUGS[trimmed];
-  if (direct) return direct;
-  for (const [korean, slug] of Object.entries(BRANCH_SLUGS)) {
-    if (trimmed.includes(korean)) return slug;
-  }
-
-  const slug = trimmed
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, BRANCH_MAX_LENGTH)
-    .replace(/-+$/g, "");
-
-  return slug.length > 0 ? slug : null;
-}
-
-/* ------------------------------------------------------------------ *
- * 코드 생성
- * ------------------------------------------------------------------ */
 
 /** 알아보기 쉬운 알파벳에서 랜덤 접미사를 만든다. */
 function randomSuffix(length: number = SUFFIX_LENGTH): string {
@@ -122,28 +63,49 @@ function randomSuffix(length: number = SUFFIX_LENGTH): string {
 /**
  * Date → **KST 기준** `MMDD`.
  *
- * 서버 로컬시간을 쓰면 안 된다. 발급은 이제 Vercel(UTC)에서 일어나는데,
- * KST 00:00~09:00에 발급하면 UTC로는 아직 전날이라 코드에 하루 전 날짜가
- * 박힌다. 교육이 열리는 날과 코드가 어긋나면 달력에서 찾을 수 없다.
+ * 서버 로컬시간을 쓰면 안 된다. 발급은 Vercel(UTC)에서 일어나는데, KST
+ * 00:00~09:00에 발급하면 UTC로는 아직 전날이라 코드에 하루 전 날짜가 박힌다.
+ * 교육이 열리는 날과 코드가 어긋나면 달력에서 찾을 수 없다.
  */
 function toMonthDay(d: Date): string {
   return toKstDateString(d.getTime()).slice(5).replace("-", "");
 }
 
 /**
- * 새 회차 코드를 만든다 — `MMDD-<교육반>-<랜덤3>` (예: `1124-eumju-7k2`).
- * 교육반을 슬러그로 바꿀 수 없으면 null.
+ * 새 회차 코드를 만든다 — `MMDD-<랜덤6>` (예: `1124-7k2m9p`).
  *
- * 접미사가 랜덤이라 충돌 확률은 낮지만 0은 아니다. 서버가 등록 전에 같은
- * 코드가 있는지 확인하고 다시 뽑는다(`issueSession`).
+ * 날짜를 앞에 두는 것은 관리자가 코드만 보고 언제 것인지 알게 하기 위해서다.
+ * 접미사가 겹칠 확률은 매우 낮지만 0은 아니고, 겹치면 두 회차의 통계가 한
+ * 코드로 합쳐진다. 서버가 등록 전에 같은 코드가 있는지 확인하고 다시 뽑는다
+ * (`issueSession`).
  */
-export function issueGroupCode(
-  branch: string,
-  now: Date = new Date(),
-): string | null {
-  const slug = normalizeBranchSlug(branch);
-  if (!slug) return null;
-  return normalizeGroupCode(`${toMonthDay(now)}-${slug}-${randomSuffix()}`);
+export function issueGroupCode(now: Date = new Date()): string {
+  return `${toMonthDay(now)}-${randomSuffix()}`;
+}
+
+/* ------------------------------------------------------------------ *
+ * 교육반·교수자 이름
+ * ------------------------------------------------------------------ */
+
+/** 이름 최대 길이 — 목록에서 한 줄에 들어오는 선을 넘지 않게. */
+export const BRANCH_MAX_LENGTH = 40;
+
+/**
+ * 교육반·교수자 이름을 저장 가능한 형태로 다듬는다.
+ *
+ * **비어 있어도 된다.** 이름은 관리자가 나중에 목록에서 알아보기 위한 메모일
+ * 뿐이고, 회차를 식별하는 것은 코드다. 비우면 빈 문자열이 되고 발급은 그대로
+ * 진행된다.
+ *
+ * 글자 자체에는 제한을 두지 않는다 — 한글·영문·숫자 무엇이든 적을 수 있다.
+ * 제어문자를 지우고 공백을 접은 뒤 길이만 자른다.
+ */
+export function normalizeBranchName(raw: string): string {
+  return raw
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, BRANCH_MAX_LENGTH);
 }
 
 /* ------------------------------------------------------------------ *

@@ -15,8 +15,11 @@ import {
  * 나와도 알 길이 없었다. 지금은 서버가 코드를 만들고, 이미 쓰인 코드면 다시
  * 뽑고, 등록부(`sessions`)에 적은 뒤 돌려준다.
  *
- * POST /api/admin/sessions   { branch, survey }  → 새 회차
- * GET  /api/admin/sessions?limit=20              → 최근 발급 내역
+ * 교육반·교수자 이름(`branch`)은 **선택**이다. 비워도 발급된다 — 이름은 관리자가
+ * 목록에서 알아보기 위한 메모이고, 회차를 식별하는 것은 코드다.
+ *
+ * POST /api/admin/sessions   { branch?, survey }  → 새 회차
+ * GET  /api/admin/sessions?limit=20               → 최근 발급 내역
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,16 +85,10 @@ export async function POST(request: NextRequest) {
     if (typeof body.branch === "string") branch = body.branch;
     survey = body.survey === true;
   } catch {
-    // 본문 파싱 실패 → 빈 교육반으로 간주(아래에서 거부)
+    // 본문 파싱 실패 → 이름 없이, 설문 없이 발급한다(둘 다 선택이다)
   }
 
-  if (!branch.trim()) {
-    return NextResponse.json(
-      { error: "교육반을 입력해 주세요." },
-      { status: 400 },
-    );
-  }
-
+  // 이름은 선택이다 — 비워도 발급한다. 회차를 식별하는 것은 코드다.
   const db = getAdminDb();
   if (!db) return unconfigured();
 
@@ -107,11 +104,8 @@ export async function POST(request: NextRequest) {
 
   if (!session) {
     return NextResponse.json(
-      {
-        error:
-          "교육반을 알아볼 수 없습니다. 표에 있는 이름이나 영문으로 적어 주세요.",
-      },
-      { status: 400 },
+      { error: "회차 코드를 만들지 못했습니다. 다시 시도해 주세요." },
+      { status: 500 },
     );
   }
 
