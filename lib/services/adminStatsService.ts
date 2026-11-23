@@ -65,6 +65,28 @@ export interface LoadGroupStatsOptions {
   classifier: Classifier;
 }
 
+/** 화면의 "최소 응답 수" 선택지. 자동 보정도 이 값들 안에서만 움직인다. */
+export const MIN_ATTEMPTS_OPTIONS = [1, 2, 3, 5, 10] as const;
+
+/**
+ * 조회된 데이터로 실제 볼 수 있는 "최소 응답 수" 상한.
+ *
+ * 세션이 1회뿐이면 모든 문항의 응답 수가 1건이라, 기본값 2건으로는 오답이
+ * 34건 있어도 목록이 통째로 빈다. 그런 일이 없도록 데이터가 감당하는 선까지
+ * 임계값을 낮춘다. 틀린 문항이 하나도 없으면 null(보정할 것이 없다).
+ */
+export function maxUsableMinAttempts(
+  questions: Pick<GroupQuestionStat, "attempts" | "wrong">[],
+): number | null {
+  // 목록은 오답 1건 이상만 보여주므로, 임계값도 그 문항들 기준으로 잡는다.
+  const maxAttempts = questions.reduce(
+    (max, q) => (q.wrong > 0 ? Math.max(max, q.attempts) : max),
+    0,
+  );
+  if (maxAttempts === 0) return null;
+  return [...MIN_ATTEMPTS_OPTIONS].reverse().find((n) => n <= maxAttempts) ?? 1;
+}
+
 /** 세션이 끊겼을 때 화면이 다시 로그인을 띄우도록 구분하는 에러. */
 export class AdminSessionExpiredError extends Error {
   constructor() {

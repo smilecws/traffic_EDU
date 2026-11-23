@@ -4,6 +4,7 @@ import type { Classifier } from "@/lib/services/questionClassifier";
 import {
   AdminSessionExpiredError,
   loadGroupStats,
+  maxUsableMinAttempts,
   toCsv,
 } from "@/lib/services/adminStatsService";
 
@@ -213,5 +214,38 @@ describe("toCsv", () => {
   it("엑셀 한글 깨짐 방지용 BOM을 붙인다", () => {
     const csv = toCsv({ ...base, questions: [] }, 1);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
+  });
+});
+
+describe("maxUsableMinAttempts", () => {
+  it("세션 1회 회차(모든 문항 1건)는 1로 내린다", () => {
+    // 기본값 2건으로는 오답 34건이 통째로 숨던 상황
+    const questions = Array.from({ length: 34 }, () => ({
+      attempts: 1,
+      wrong: 1,
+    }));
+    expect(maxUsableMinAttempts(questions)).toBe(1);
+  });
+
+  it("응답이 넉넉하면 기본값을 건드리지 않는다(최대 선택지)", () => {
+    expect(maxUsableMinAttempts([{ attempts: 40, wrong: 9 }])).toBe(10);
+  });
+
+  it("선택지에 없는 값은 그 아래 선택지로 맞춘다", () => {
+    // 4건까지 가능 → 선택지 [1,2,3,5,10] 중 3
+    expect(maxUsableMinAttempts([{ attempts: 4, wrong: 2 }])).toBe(3);
+  });
+
+  it("다 맞힌 문항의 응답 수는 기준으로 쓰지 않는다", () => {
+    const questions = [
+      { attempts: 20, wrong: 0 }, // 전원 정답 — 목록에 안 나온다
+      { attempts: 1, wrong: 1 },
+    ];
+    expect(maxUsableMinAttempts(questions)).toBe(1);
+  });
+
+  it("틀린 문항이 없으면 null", () => {
+    expect(maxUsableMinAttempts([{ attempts: 9, wrong: 0 }])).toBeNull();
+    expect(maxUsableMinAttempts([])).toBeNull();
   });
 });

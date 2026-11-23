@@ -35,7 +35,7 @@ function stat(overrides: Partial<GroupQuestionStat> = {}): GroupQuestionStat {
 
 describe("WrongQuestionList", () => {
   it("문항 요약과 오답률을 보여준다", () => {
-    render(<WrongQuestionList questions={[stat()]} />);
+    render(<WrongQuestionList questions={[stat()]} wrongQuestionCount={1} />);
 
     // 문제 본문은 한 번만 나온다 — 접힘/펼침이 같은 문단을 쓴다
     expect(
@@ -47,7 +47,7 @@ describe("WrongQuestionList", () => {
   });
 
   it("선택지를 모두 펼치고 정답만 표시한다", () => {
-    render(<WrongQuestionList questions={[stat()]} />);
+    render(<WrongQuestionList questions={[stat()]} wrongQuestionCount={1} />);
 
     expect(screen.getByText("새로 진입한 차")).toBeInTheDocument();
     expect(screen.getByText("우측 도로의 차")).toBeInTheDocument();
@@ -59,7 +59,7 @@ describe("WrongQuestionList", () => {
   });
 
   it("해설을 보여준다", () => {
-    render(<WrongQuestionList questions={[stat()]} />);
+    render(<WrongQuestionList questions={[stat()]} wrongQuestionCount={1} />);
     expect(
       screen.getByText("교차로 내에 이미 진입한 차가 우선한다."),
     ).toBeInTheDocument();
@@ -69,6 +69,7 @@ describe("WrongQuestionList", () => {
     render(
       <WrongQuestionList
         questions={[stat({ question: null, questionId: "q999" })]}
+        wrongQuestionCount={1}
       />,
     );
 
@@ -79,10 +80,17 @@ describe("WrongQuestionList", () => {
     expect(screen.queryByText("이미 진입한 차")).not.toBeInTheDocument();
   });
 
-  it("문항이 없으면 안내 문구를 띄운다", () => {
-    render(<WrongQuestionList questions={[]} />);
+  it("틀린 문항이 아예 없으면 그렇게 말한다", () => {
+    render(<WrongQuestionList questions={[]} wrongQuestionCount={0} />);
     expect(
-      screen.getByText(/조건을 만족하는 문항이 없습니다/),
+      screen.getByText("이 회차에서 틀린 문항이 없습니다."),
+    ).toBeInTheDocument();
+  });
+
+  it("틀린 문항은 있는데 필터에 걸렸으면 값을 낮추라고 안내한다", () => {
+    render(<WrongQuestionList questions={[]} wrongQuestionCount={12} />);
+    expect(
+      screen.getByText(/최소 응답 수 조건에 걸려/),
     ).toBeInTheDocument();
   });
 
@@ -98,6 +106,7 @@ describe("WrongQuestionList", () => {
             },
           }),
         ]}
+        wrongQuestionCount={1}
       />,
     );
 
