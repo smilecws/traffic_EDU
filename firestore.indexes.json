@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "answer_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "g", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
