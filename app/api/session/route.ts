@@ -10,18 +10,22 @@ import { normalizeGroupCode } from "@/lib/utils/groupCode";
  * 주소의 `&s=1`이 그 역할을 했고, 교육생이 직접 붙여도 설문이 열렸다.
  * 이제 켜는 쪽도 끄는 쪽도 등록부가 정한다.
  *
- * 돌려주는 것은 **참/거짓 두 개뿐**이다. 교육반 이름·응답 수처럼 관리자만
- * 볼 것은 담지 않는다. 그래도 "그 코드가 있는지"는 알려 주게 되므로, 코드를
- * 찍어 보며 유효한 회차를 찾아내는 시도 자체는 가능하다. 알아낸 뒤에 할 수
- * 있는 일이 응답을 한 건 더 넣는 것뿐이고 그건 상한으로 묶어 두었다.
+ * 돌려주는 것은 **교육생 화면이 움직이는 데 필요한 것뿐**이다. 교육반 이름·응답
+ * 수처럼 관리자만 볼 것은 담지 않는다. 지정 출제 문제 목록(`picks`)은 애초에
+ * 교육생에게 보여 주려고 적어 둔 것이고(문제 본문과 정답은 이미 공개 데이터다)
+ * 개인 식별 정보도 아니므로 여기서 내려보낸다.
  *
- * GET /api/session?code=1124-eumju-7k2 → { ok, survey }
+ * 그래도 "그 코드가 있는지"는 알려 주게 되므로, 코드를 찍어 보며 유효한 회차를
+ * 찾아내는 시도 자체는 가능하다. 알아낸 뒤에 할 수 있는 일이 응답을 한 건 더
+ * 넣거나 남의 반 출제 목록을 보는 것뿐이고, 전자는 상한으로 묶어 두었다.
+ *
+ * GET /api/session?code=1124-eumju-7k2 → { ok, survey, picks }
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** 조회 실패·미설정은 전부 "없는 회차"로 답한다 — 화면 동작이 같기 때문이다. */
-const CLOSED = { ok: false, survey: false } as const;
+const CLOSED = { ok: false, survey: false, picks: [] } as const;
 
 export async function GET(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get("code") ?? "";
@@ -47,7 +51,7 @@ export async function GET(request: NextRequest) {
       });
     }
     return NextResponse.json(
-      { ok: true, survey: session.survey },
+      { ok: true, survey: session.survey, picks: session.picks },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch {

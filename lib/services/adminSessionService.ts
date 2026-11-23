@@ -13,6 +13,11 @@ export interface AdminSession {
   /** 발급 시 입력한 교육반 원문(한글일 수 있다). */
   branch: string;
   survey: boolean;
+  /**
+   * 교수자가 지정한 출제 문제 id 목록. 비어 있으면 지정 출제가 없는 회차다.
+   * 발급 시점의 값이 그대로 박혀 있다 — 세트를 나중에 고쳐도 변하지 않는다.
+   */
+  picks: string[];
   /** epoch ms */
   issuedAt: number;
   /** epoch ms — 발급일 KST 자정 */
@@ -33,10 +38,16 @@ async function readError(res: Response, fallback: string): Promise<string> {
   return fallback;
 }
 
-/** 새 회차를 발급한다. 교육반을 알아볼 수 없으면 에러 메시지를 던진다. */
+/**
+ * 새 회차를 발급한다. 발급에 실패하면 에러 메시지를 던진다.
+ *
+ * `picks`를 주면 그 회차 QR로 들어온 교육생 화면에만 "이번 교육 문제" 카드가
+ * 뜬다. 비우면 전과 완전히 같은 회차다.
+ */
 export async function issueSession(options: {
   branch: string;
   survey: boolean;
+  picks?: string[];
 }): Promise<AdminSession> {
   const res = await fetch("/api/admin/sessions", {
     method: "POST",

@@ -105,13 +105,19 @@ export interface GlobalAggregate {
   top: GlobalTopEntry[]; // 최대 50
 }
 
-/** 퀴즈 모드 — 랜덤/오답/즐겨찾기/모의고사/순서대로(번호순) */
+/**
+ * 퀴즈 모드 — 랜덤/오답/즐겨찾기/모의고사/순서대로(번호순)/지정 출제.
+ *
+ * `assigned`는 교수자가 회차에 지정해 둔 문제만 푸는 모드다. 문제 목록은
+ * URL이 아니라 기기에 저장된 지정 출제 기록에서 온다(`assignmentService`).
+ */
 export type QuizMode =
   | "random"
   | "wrong"
   | "favorite"
   | "mock"
-  | "sequential";
+  | "sequential"
+  | "assigned";
 
 /** 세션의 모드/면허 메타 (결과 저장·합격판정·이력에 사용) */
 export interface SessionMeta {

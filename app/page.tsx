@@ -17,6 +17,7 @@ import { ExternalLinkRow } from "@/components/shared/ExternalLinkRow";
 import { BottomSheet } from "@/components/shared/BottomSheet";
 import { OptionRow } from "@/components/shared/OptionRow";
 import { SurveyEntry } from "@/components/survey/SurveyEntry";
+import { AssignmentEntry } from "@/components/assignment/AssignmentEntry";
 
 const iconProps = { size: 24, strokeWidth: 1.5 } as const;
 
@@ -41,6 +42,13 @@ export default function Home() {
           <MoreVertical size={20} strokeWidth={1.5} />
         </button>
       </header>
+
+      {/*
+        이번 교육 문제 — 교수자가 문제를 지정한 회차 QR로 들어온 기기에만
+        나타난다. 홈 **맨 위**에 둔다: 교육장에서 교육생이 가장 먼저 눌러야
+        하는 것이고, 기능 카드 아래로 내려가면 스크롤에 묻힌다.
+      */}
+      <AssignmentEntry />
 
       {/* 기능 카드 2×2 그리드 */}
       <section className="grid grid-cols-2 gap-3">

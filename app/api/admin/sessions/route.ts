@@ -18,7 +18,11 @@ import {
  * 교육반·교수자 이름(`branch`)은 **선택**이다. 비워도 발급된다 — 이름은 관리자가
  * 목록에서 알아보기 위한 메모이고, 회차를 식별하는 것은 코드다.
  *
- * POST /api/admin/sessions   { branch?, survey }  → 새 회차
+ * 지정 출제 문제(`picks`)도 선택이다. 주면 그 회차 QR로 들어온 교육생 화면에만
+ * "이번 교육 문제" 카드가 뜬다(설문 체크박스와 같은 구조 — 켜고 끄는 힘은
+ * 링크가 아니라 등록부에 있다).
+ *
+ * POST /api/admin/sessions   { branch?, survey, picks? }  → 새 회차
  * GET  /api/admin/sessions?limit=20               → 최근 발급 내역
  */
 export const runtime = "nodejs";
@@ -77,24 +81,28 @@ export async function POST(request: NextRequest) {
 
   let branch = "";
   let survey = false;
+  let picks: unknown = [];
   try {
     const body = (await request.json()) as {
       branch?: unknown;
       survey?: unknown;
+      picks?: unknown;
     };
     if (typeof body.branch === "string") branch = body.branch;
     survey = body.survey === true;
+    picks = body.picks;
   } catch {
-    // 본문 파싱 실패 → 이름 없이, 설문 없이 발급한다(둘 다 선택이다)
+    // 본문 파싱 실패 → 이름 없이, 설문 없이, 지정 출제 없이 발급한다(모두 선택이다)
   }
 
   // 이름은 선택이다 — 비워도 발급한다. 회차를 식별하는 것은 코드다.
+  // 지정 출제 문제도 선택이다 — 형식 검증은 등록부(normalizePicks)가 맡는다.
   const db = getAdminDb();
   if (!db) return unconfigured();
 
   let session: SessionPayload | null;
   try {
-    session = await issueSession(db, { branch, survey });
+    session = await issueSession(db, { branch, survey, picks });
   } catch {
     return NextResponse.json(
       { error: "회차를 발급하지 못했습니다. 잠시 후 다시 시도해 주세요." },

@@ -13,6 +13,8 @@ const SESSION_SIZE = 40;
  * - sequential: opts.startNumber 이상인 문제를 **번호 오름차순으로 전부**(테스트용).
  * - wrong | favorite: 지정 id에 해당하는 문제만, 지정 id의 **순서를 보존**.
  *   (최근 우선 정렬은 호출측 책임. 존재하지 않는 id는 무시.)
+ * - assigned: 교수자가 지정한 문제만 — 목록은 opts.questionIds로 들어온다.
+ *   목록 없이 들어오면 빈 배열(개인 데이터로 흘러내리지 않게 한다).
  * - 결과가 비어도 그대로 빈 배열 반환(빈 상태는 UI가 처리).
  *
  * 순수 함수 — Date.now()/Math.random()을 직접 호출하지 않는다.
@@ -45,6 +47,10 @@ export function buildQuizQuestions(
     const pool = type ? all.filter((q) => q.type === type) : all;
     return pickRandom(pool, SESSION_SIZE);
   }
+
+  // 지정 출제는 목록이 전부다 — questionIds가 비었으면 풀 문제가 없는 것이다.
+  // 여기서 빈 배열로 끊지 않으면 아래 분기가 즐겨찾기로 흘러내린다.
+  if (mode === "assigned") return [];
 
   const ids = mode === "wrong" ? wrongIds : favoriteIds;
   const byId = new Map(all.map((q) => [q.id, q]));
