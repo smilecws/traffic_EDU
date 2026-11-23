@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BookOpen,
-  CalendarDays,
   CheckSquare,
   ExternalLink,
   FileText,
@@ -83,16 +82,9 @@ export default function Home() {
         <div className="space-y-2">
           <ExternalLinkRow
             icon={<GraduationCap {...iconProps} />}
-            color="rose"
-            title="특별교통안전교육 일정"
-            subtitle="지역별 교육 일정 확인"
-            href="https://www.safedriving.or.kr/main.do"
-          />
-          <ExternalLinkRow
-            icon={<CalendarDays {...iconProps} />}
             color="indigo"
-            title="운전면허시험 일정"
-            subtitle="전국 시험장 일정 조회"
+            title="안전운전 통합민원"
+            subtitle="특별교통안전교육·운전면허시험 일정 조회"
             href="https://www.safedriving.or.kr/main.do"
           />
         </div>
