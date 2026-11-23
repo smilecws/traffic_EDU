@@ -16,6 +16,7 @@ import { useStats } from "@/lib/hooks/useStats";
 import { useWrongNotes } from "@/lib/hooks/useWrongNotes";
 import { useCountdown } from "@/lib/hooks/useCountdown";
 import { useBackGuard } from "@/lib/hooks/useBackGuard";
+import { useUnloadWarning } from "@/lib/hooks/useUnloadWarning";
 import { isAnswerCorrect } from "@/lib/utils/calculateScore";
 import { useAppStore } from "@/lib/store/appStore";
 import { saveSessionResult } from "@/lib/services/sessionResultService";
@@ -105,6 +106,10 @@ function QuizPlayInner() {
       router.replace("/quiz");
     },
   });
+
+  // 새로고침·탭 닫기 경고. 응시가 무효화되는 모의고사에만 걸어 ← 버튼/뒤로가기의
+  // 확인 기준과 맞춘다. 채점이 끝나면(결과 화면으로 이동) 더 경고하지 않는다.
+  useUnloadWarning(isMock && !isComplete);
 
   // 진입 시 1회 세션 시작 (mode/license 전달).
   useEffect(() => {
