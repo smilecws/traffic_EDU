@@ -11,8 +11,8 @@ import {
  * 서비스 계정으로 읽어 **문항별 시도/오답 수만** 내려주고, 문제 텍스트 조인과
  * 분류 집계는 이미 문제 데이터를 갖고 있는 클라이언트에서 한다.
  *
- * 범위는 두 가지다 — 교육 회차 하나(`loadGroupStats`)와
- * 전체 기간·전체 회차(`loadAllStats`). 응답 가공·정렬 로직은 공유한다.
+ * 범위는 두 가지다 — 교육 회차 하나(`loadGroupStats`)와 회차 무관
+ * 조회(`loadAllStats`, 기간 지정 또는 전체 기간). 가공·정렬 로직은 공유한다.
  */
 
 /** 집계 범위. */
@@ -47,7 +47,10 @@ export interface GroupQuestionStat {
 
 /** 집계 결과 전체. 회차 하나일 수도, 전체 범위일 수도 있다. */
 export interface GroupStats {
-  /** "all"이면 code·from·to는 빈 문자열이다. */
+  /**
+   * "all"이면 code는 빈 문자열이다. from·to는 기간을 지정했을 때만 채워지고,
+   * 전체 기간 조회에서는 빈 문자열이다.
+   */
   scope: StatsScope;
   code: string;
   from: string;
@@ -75,6 +78,15 @@ export interface LoadGroupStatsOptions extends LoadStatsOptions {
   from: string;
   /** `yyyy-MM-dd` */
   to: string;
+}
+
+export interface LoadAllStatsOptions extends LoadStatsOptions {
+  /**
+   * 조회 기간(`yyyy-MM-dd`). 둘 다 주면 그 기간, 둘 다 비우면 전체 기간이다.
+   * 한쪽만 주면 서버가 400으로 거른다.
+   */
+  from?: string;
+  to?: string;
 }
 
 /** 화면의 "최소 응답 수" 선택지. 자동 보정도 이 값들 안에서만 움직인다. */
@@ -152,17 +164,26 @@ export async function loadGroupStats({
 }
 
 /**
- * 전체 기간·전체 회차 집계.
+ * 회차 무관 집계 — 기간을 주면 그 기간, 비우면 전체 기간.
  *
- * 회차 코드·날짜 조건 없이 `answer_logs` 전체를 읽으므로, 회차 코드를 입력하지
- * 않은 응답까지 포함된다. 회차 비교가 아니라 "문제은행에서 어떤 문항이
- * 꾸준히 틀리는지"를 보려는 용도다.
+ * 회차 코드 조건이 없으므로 코드를 입력하지 않은 응답까지 포함된다. 회차 비교가
+ * 아니라 "문제은행에서 어떤 문항이 꾸준히 틀리는지"를 보려는 용도다.
+ *
+ * 기간을 좁히면 읽는 문서 수도 그만큼 줄어든다(Firestore 읽기 과금 = 문서 수).
  */
 export async function loadAllStats({
+  from,
+  to,
   questions,
   classifier,
-}: LoadStatsOptions): Promise<GroupStats> {
-  const body = await fetchStats(new URLSearchParams({ scope: "all" }));
+}: LoadAllStatsOptions): Promise<GroupStats> {
+  const params = new URLSearchParams({ scope: "all" });
+  // 한쪽만 보내면 서버가 400을 주므로, 둘 다 있을 때만 싣는다.
+  if (from && to) {
+    params.set("from", from);
+    params.set("to", to);
+  }
+  const body = await fetchStats(params);
   return buildStats(body, "all", { questions, classifier });
 }
 

@@ -31,10 +31,27 @@ type Phase = "loading" | "unconfigured" | "locked" | "ready";
 /** 관리자 화면의 두 가지 일 — 교육 전 발급, 교육 후 조회. */
 type Tab = "issue" | "stats";
 
+/** 회차 무관 조회의 기간 선택지. */
+type AllRange = "all" | "7d" | "30d" | "custom";
+
+const ALL_RANGE_LABELS: Record<AllRange, string> = {
+  all: "전체 기간",
+  "7d": "최근 7일",
+  "30d": "최근 30일",
+  custom: "직접 지정",
+};
+
 /** Date → yyyy-MM-dd (로컬 기준, input[type=date] 용). */
 function toDateInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 오늘을 포함해 최근 n일의 시작일. n=7이면 오늘과 그 앞 6일. */
+function recentStart(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - (n - 1));
+  return toDateInput(d);
 }
 
 /**
@@ -128,6 +145,11 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
   const [minAttempts, setMinAttempts] = useState(2);
   const [limit, setLimit] = useState(30);
 
+  /** 회차 무관 조회의 기간 — 기본은 전체 기간. */
+  const [allRange, setAllRange] = useState<AllRange>("all");
+  const [allFrom, setAllFrom] = useState(() => recentStart(30));
+  const [allTo, setAllTo] = useState(today);
+
   const [stats, setStats] = useState<GroupStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -175,35 +197,71 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
   );
 
   /**
-   * 전체 기간·전체 회차 집계. 회차·날짜 조건이 없으므로 달력 선택 상태를 비운다.
-   * 코드 없이 들어온 응답까지 포함된다.
+   * 회차 무관 집계. 회차 조건이 없으므로 달력 선택 상태를 비운다.
+   * 기간을 비워 호출하면 전체 기간이다. 코드 없이 들어온 응답까지 포함된다.
    */
-  const runLoadAll = useCallback(async () => {
-    if (!questions) return;
-    setBusy(true);
-    setError(null);
-    setStats(null);
-    setPickedDay(null);
-    try {
-      const result = await loadAllStats({
-        questions,
-        classifier: DEFAULT_CLASSIFIER,
-      });
-      setStats(result);
-
-      const usable = maxUsableMinAttempts(result.questions);
-      if (usable !== null) setMinAttempts((prev) => Math.min(prev, usable));
-    } catch (err) {
+  const runLoadAll = useCallback(
+    async (range: { from?: string; to?: string }) => {
+      if (!questions) return;
+      setBusy(true);
+      setError(null);
       setStats(null);
-      if (err instanceof AdminSessionExpiredError) {
-        onSessionExpired();
-        return;
+      setPickedDay(null);
+      try {
+        const result = await loadAllStats({
+          ...range,
+          questions,
+          classifier: DEFAULT_CLASSIFIER,
+        });
+        setStats(result);
+
+        const usable = maxUsableMinAttempts(result.questions);
+        if (usable !== null) setMinAttempts((prev) => Math.min(prev, usable));
+      } catch (err) {
+        setStats(null);
+        if (err instanceof AdminSessionExpiredError) {
+          onSessionExpired();
+          return;
+        }
+        setError(err instanceof Error ? err.message : "조회에 실패했습니다.");
+      } finally {
+        setBusy(false);
       }
-      setError(err instanceof Error ? err.message : "조회에 실패했습니다.");
-    } finally {
-      setBusy(false);
-    }
-  }, [questions, onSessionExpired]);
+    },
+    [questions, onSessionExpired],
+  );
+
+  /**
+   * 기간 선택지를 실제 조회 조건으로 바꾼다. "전체 기간"은 빈 객체 —
+   * 서버가 날짜 조건 없이 컬렉션 전체를 읽는다.
+   */
+  const resolveAllRange = useCallback(
+    (range: AllRange): { from?: string; to?: string } => {
+      switch (range) {
+        case "all":
+          return {};
+        case "7d":
+          return { from: recentStart(7), to: today };
+        case "30d":
+          return { from: recentStart(30), to: today };
+        case "custom":
+          return { from: allFrom, to: allTo };
+      }
+    },
+    [today, allFrom, allTo],
+  );
+
+  /**
+   * 기간 칩을 누르면 바로 조회한다(의도가 분명한 조작이므로 한 번에 끝낸다).
+   * "직접 지정"만 날짜 입력을 펼치고 조회 버튼을 기다린다.
+   */
+  const handleAllRangePick = useCallback(
+    (range: AllRange) => {
+      setAllRange(range);
+      if (range !== "custom") void runLoadAll(resolveAllRange(range));
+    },
+    [runLoadAll, resolveAllRange],
+  );
 
   /** 달력에서 회차를 고른 경우 — 코드와 날짜를 그 회차로 맞추고 바로 조회한다. */
   const handleCalendarSelect = useCallback(
@@ -248,7 +306,9 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
     a.href = url;
     a.download =
       stats.scope === "all"
-        ? `오답률_전체_${today}.csv`
+        ? stats.from
+          ? `오답률_전체회차_${stats.from}_${stats.to}.csv`
+          : `오답률_전체기간_${today}.csv`
         : `오답률_${stats.code}_${stats.from}_${stats.to}.csv`;
     a.click();
     URL.revokeObjectURL(url);
@@ -305,25 +365,88 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
 
       {tab === "stats" && (
         <>
-          {/* 회차 비교가 아니라 문제은행 난이도를 볼 때 쓰는 전체 범위 조회. */}
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-[#ebe9f5] bg-white px-3 py-2.5">
-            <p className="text-xs leading-relaxed text-slate-500">
-              회차와 무관하게{" "}
-              <span className="font-medium text-slate-700">
-                전체 기간·전체 회차
-              </span>
-              의 오답률을 봅니다.
-            </p>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="shrink-0"
-              disabled={!questions || busy}
-              onClick={() => void runLoadAll()}
+          {/* 회차 비교가 아니라 문제은행 난이도를 볼 때 쓰는 회차 무관 조회. */}
+          <Card className="space-y-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium text-slate-900">
+                회차 무관 기간 조회
+              </p>
+              <p className="text-xs leading-relaxed text-slate-500">
+                고른 기간의 모든 회차를 합쳐 오답률을 봅니다. 회차 코드 없이
+                들어온 응답도 포함됩니다.
+              </p>
+            </div>
+
+            <div
+              role="group"
+              aria-label="조회 기간"
+              className="grid grid-cols-4 gap-1 rounded-xl bg-[#f5f4fb] p-1"
             >
-              전체 보기
-            </Button>
-          </div>
+              {(Object.keys(ALL_RANGE_LABELS) as AllRange[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={allRange === value}
+                  disabled={!questions || busy}
+                  onClick={() => handleAllRangePick(value)}
+                  className={cn(
+                    "rounded-lg px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
+                    allRange === value
+                      ? "bg-white text-violet-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700",
+                  )}
+                >
+                  {ALL_RANGE_LABELS[value]}
+                </button>
+              ))}
+            </div>
+
+            {allRange === "custom" && (
+              <>
+                <div className="flex items-end gap-2">
+                  <label className="block flex-1 space-y-1">
+                    <span className="text-xs font-medium text-slate-600">
+                      시작일
+                    </span>
+                    <input
+                      type="date"
+                      value={allFrom}
+                      max={allTo}
+                      onChange={(e) => setAllFrom(e.target.value)}
+                      className="w-full rounded-xl border border-[#ebe9f5] px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-400"
+                    />
+                  </label>
+                  <label className="block flex-1 space-y-1">
+                    <span className="text-xs font-medium text-slate-600">
+                      종료일
+                    </span>
+                    <input
+                      type="date"
+                      value={allTo}
+                      min={allFrom}
+                      onChange={(e) => setAllTo(e.target.value)}
+                      className="w-full rounded-xl border border-[#ebe9f5] px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-400"
+                    />
+                  </label>
+                </div>
+
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  disabled={!questions || busy || allFrom > allTo}
+                  onClick={() => void runLoadAll(resolveAllRange("custom"))}
+                >
+                  {busy ? "조회 중…" : "조회"}
+                </Button>
+
+                {allFrom > allTo && (
+                  <p className="text-xs text-red-500">
+                    시작일이 종료일보다 늦습니다.
+                  </p>
+                )}
+              </>
+            )}
+          </Card>
 
           <SessionCalendar
             selectedCode={stats?.scope === "group" ? stats.code : null}
@@ -423,7 +546,15 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
               <Card className="space-y-3">
                 <p className="text-xs text-slate-400">
                   {stats.scope === "all" ? (
-                    "전체 회차 · 전체 기간"
+                    stats.from ? (
+                      `전체 회차 · ${
+                        stats.from === stats.to
+                          ? stats.from
+                          : `${stats.from} ~ ${stats.to}`
+                      }`
+                    ) : (
+                      "전체 회차 · 전체 기간"
+                    )
                   ) : (
                     <>
                       <code className="text-slate-600">{stats.code}</code>
@@ -451,9 +582,11 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
                 </p>
                 {stats.sessions === 0 && (
                   <p className="text-sm leading-relaxed text-slate-600">
-                    {stats.scope === "all"
-                      ? "아직 쌓인 응답 기록이 없습니다."
-                      : "이 조건에 해당하는 기록이 없습니다. 회차 코드와 날짜를 확인하세요."}
+                    {stats.scope !== "all"
+                      ? "이 조건에 해당하는 기록이 없습니다. 회차 코드와 날짜를 확인하세요."
+                      : stats.from
+                        ? "이 기간에는 응답 기록이 없습니다. 기간을 넓혀 보세요."
+                        : "아직 쌓인 응답 기록이 없습니다."}
                   </p>
                 )}
               </Card>
