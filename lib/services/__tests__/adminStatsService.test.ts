@@ -3,6 +3,7 @@ import type { Question } from "@/lib/types";
 import type { Classifier } from "@/lib/services/questionClassifier";
 import {
   AdminSessionExpiredError,
+  loadAllStats,
   loadGroupStats,
   maxUsableMinAttempts,
   toCsv,
@@ -141,10 +142,103 @@ describe("loadGroupStats", () => {
       }),
     ).rejects.toThrow(AdminSessionExpiredError);
   });
+
+  it("회차 조회는 scope를 group으로 표시한다", async () => {
+    mockStats([{ questionId: "q1", attempts: 2, wrong: 1 }]);
+
+    const stats = await loadGroupStats({
+      code: "1124-seoul-7k2",
+      from: "2026-11-24",
+      to: "2026-11-24",
+      questions,
+      classifier,
+    });
+
+    expect(stats.scope).toBe("group");
+    expect(stats.code).toBe("1124-seoul-7k2");
+  });
+});
+
+describe("loadAllStats", () => {
+  /** 호출된 URL을 기록해 두는 상자 — 질의 문자열을 검증하는 데 쓴다. */
+  const requested: string[] = [];
+
+  /** 전체 범위 응답 — code·from·to가 빈 문자열로 온다. */
+  function mockAllStats(counts: unknown, sessions = 540) {
+    requested.length = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        requested.push(String(input));
+        return new Response(
+          JSON.stringify({
+            scope: "all",
+            code: "",
+            from: "",
+            to: "",
+            sessions,
+            counts,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+  }
+
+  it("코드·날짜 없이 scope=all로만 조회한다", async () => {
+    mockAllStats([{ questionId: "q1", attempts: 9, wrong: 9 }]);
+
+    await loadAllStats({ questions, classifier });
+
+    expect(requested).toHaveLength(1);
+    expect(requested[0]).toContain("scope=all");
+    expect(requested[0]).not.toContain("code=");
+    expect(requested[0]).not.toContain("from=");
+  });
+
+  it("전체 집계도 회차와 같은 모양으로 가공한다", async () => {
+    mockAllStats([
+      { questionId: "q1", attempts: 10, wrong: 2 },
+      { questionId: "q2", attempts: 10, wrong: 8 },
+    ]);
+
+    const stats = await loadAllStats({ questions, classifier });
+
+    expect(stats.scope).toBe("all");
+    expect(stats.sessions).toBe(540);
+    expect(stats.attempts).toBe(20);
+    expect(stats.wrongRate).toBe(0.5);
+    // 오답률 내림차순 — 회차 조회와 동일한 정렬
+    expect(stats.questions.map((q) => q.questionId)).toEqual(["q2", "q1"]);
+    // 문제 전문 조인도 그대로 동작한다
+    expect(stats.questions[0].question?.explanation).toBe("해설 둘");
+  });
+
+  it("code·from·to는 빈 문자열로 둔다(화면이 전체 범위로 표시)", async () => {
+    mockAllStats([]);
+
+    const stats = await loadAllStats({ questions, classifier });
+
+    expect(stats.code).toBe("");
+    expect(stats.from).toBe("");
+    expect(stats.to).toBe("");
+  });
+
+  it("401이면 세션 만료 에러를 던진다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 401 })),
+    );
+
+    await expect(loadAllStats({ questions, classifier })).rejects.toThrow(
+      AdminSessionExpiredError,
+    );
+  });
 });
 
 describe("toCsv", () => {
   const base = {
+    scope: "group" as const,
     code: "1124-seoul-7k2",
     from: "2026-11-24",
     to: "2026-11-24",

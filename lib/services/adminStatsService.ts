@@ -5,12 +5,18 @@ import {
 } from "@/lib/services/questionClassifier";
 
 /**
- * 관리자 전용 — 교육 회차(그룹)별 오답률.
+ * 관리자 전용 — 오답률 집계.
  *
  * 브라우저는 Firestore를 직접 읽지 않는다. 서버 라우트(`/api/admin/stats`)가
  * 서비스 계정으로 읽어 **문항별 시도/오답 수만** 내려주고, 문제 텍스트 조인과
  * 분류 집계는 이미 문제 데이터를 갖고 있는 클라이언트에서 한다.
+ *
+ * 범위는 두 가지다 — 교육 회차 하나(`loadGroupStats`)와
+ * 전체 기간·전체 회차(`loadAllStats`). 응답 가공·정렬 로직은 공유한다.
  */
+
+/** 집계 범위. */
+export type StatsScope = "group" | "all";
 
 /** 서버가 내려주는 원시 집계(문항별 카운트). */
 interface StatsResponse {
@@ -39,8 +45,10 @@ export interface GroupQuestionStat {
   wrongRate: number;
 }
 
-/** 회차 집계 결과 전체. */
+/** 집계 결과 전체. 회차 하나일 수도, 전체 범위일 수도 있다. */
 export interface GroupStats {
+  /** "all"이면 code·from·to는 빈 문자열이다. */
+  scope: StatsScope;
   code: string;
   from: string;
   to: string;
@@ -54,15 +62,19 @@ export interface GroupStats {
   questions: GroupQuestionStat[];
 }
 
-export interface LoadGroupStatsOptions {
+/** 범위와 무관하게 필요한 조인 재료. */
+export interface LoadStatsOptions {
+  /** 문제 텍스트·유형 조인용 (useQuestions 결과) */
+  questions: Question[];
+  classifier: Classifier;
+}
+
+export interface LoadGroupStatsOptions extends LoadStatsOptions {
   code: string;
   /** `yyyy-MM-dd` */
   from: string;
   /** `yyyy-MM-dd` */
   to: string;
-  /** 문제 텍스트·유형 조인용 (useQuestions 결과) */
-  questions: Question[];
-  classifier: Classifier;
 }
 
 /** 화면의 "최소 응답 수" 선택지. 자동 보정도 이 값들 안에서만 움직인다. */
@@ -112,6 +124,18 @@ async function readError(res: Response): Promise<string> {
   return "집계를 불러오지 못했습니다.";
 }
 
+/** 집계 라우트를 호출해 원시 응답을 받는다. 세션 만료는 전용 에러로 올린다. */
+async function fetchStats(params: URLSearchParams): Promise<StatsResponse> {
+  const res = await fetch(`/api/admin/stats?${params.toString()}`, {
+    cache: "no-store",
+  });
+
+  if (res.status === 401) throw new AdminSessionExpiredError();
+  if (!res.ok) throw new Error(await readError(res));
+
+  return (await res.json()) as StatsResponse;
+}
+
 /**
  * 회차 코드 + 기간으로 집계를 가져와 문항별·분류별 오답률을 만든다.
  * 기간은 양끝 포함, KST 하루 단위(서버에서 경계를 계산한다).
@@ -123,16 +147,31 @@ export async function loadGroupStats({
   questions,
   classifier,
 }: LoadGroupStatsOptions): Promise<GroupStats> {
-  const params = new URLSearchParams({ code, from, to });
-  const res = await fetch(`/api/admin/stats?${params.toString()}`, {
-    cache: "no-store",
-  });
+  const body = await fetchStats(new URLSearchParams({ code, from, to }));
+  return buildStats(body, "group", { questions, classifier });
+}
 
-  if (res.status === 401) throw new AdminSessionExpiredError();
-  if (!res.ok) throw new Error(await readError(res));
+/**
+ * 전체 기간·전체 회차 집계.
+ *
+ * 회차 코드·날짜 조건 없이 `answer_logs` 전체를 읽으므로, 회차 코드를 입력하지
+ * 않은 응답까지 포함된다. 회차 비교가 아니라 "문제은행에서 어떤 문항이
+ * 꾸준히 틀리는지"를 보려는 용도다.
+ */
+export async function loadAllStats({
+  questions,
+  classifier,
+}: LoadStatsOptions): Promise<GroupStats> {
+  const body = await fetchStats(new URLSearchParams({ scope: "all" }));
+  return buildStats(body, "all", { questions, classifier });
+}
 
-  const body = (await res.json()) as StatsResponse;
-
+/** 원시 카운트에 문제 전문·유형을 조인하고 오답률순으로 정렬한다. */
+function buildStats(
+  body: StatsResponse,
+  scope: StatsScope,
+  { questions, classifier }: LoadStatsOptions,
+): GroupStats {
   const questionById = new Map<string, Question>();
   for (const q of questions) questionById.set(q.id, q);
 
@@ -172,9 +211,10 @@ export async function loadGroupStats({
   );
 
   return {
-    code: body.code,
-    from: body.from,
-    to: body.to,
+    scope,
+    code: body.code ?? "",
+    from: body.from ?? "",
+    to: body.to ?? "",
     sessions: body.sessions ?? 0,
     attempts: totalAttempts,
     wrong: totalWrong,
