@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { ADMIN_COOKIE, verifySessionValue } from "@/lib/server/adminAuth";
 import { getAdminDb } from "@/lib/server/firebaseAdmin";
+import { DATE_PATTERN, kstDayBoundary } from "@/lib/utils/kstDate";
 
 /**
  * 관리자 전용 — 교육 회차(그룹)별 문항 집계.
@@ -17,22 +18,6 @@ export const dynamic = "force-dynamic";
 
 /** groupCodeService.ts·보안 규칙과 동일한 형식 제한. */
 const CODE_PATTERN = /^[a-z0-9-]{1,24}$/;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * `yyyy-MM-dd` → 그 날의 KST 하루 경계(Date).
- *
- * 서버(Vercel)는 UTC로 돌기 때문에 서버 로컬시간을 쓰면 하루가 9시간 밀린다.
- * 교육은 국내에서만 진행되므로 KST(UTC+9) 기준으로 못박는다.
- * - 시작: KST 00:00:00.000 = UTC 전날 15:00 → Date.UTC의 시(hour) -9로 표현
- * - 종료: KST 23:59:59.999 = UTC 같은 날 14:59:59.999
- */
-function kstDayBoundary(value: string, boundary: "start" | "end"): Date {
-  const [y, m, d] = value.split("-").map(Number);
-  return boundary === "start"
-    ? new Date(Date.UTC(y, m - 1, d, -9, 0, 0, 0))
-    : new Date(Date.UTC(y, m - 1, d, 14, 59, 59, 999));
-}
 
 export async function GET(request: NextRequest) {
   if (!verifySessionValue(request.cookies.get(ADMIN_COOKIE)?.value)) {

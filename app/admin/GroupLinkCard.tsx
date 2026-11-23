@@ -54,10 +54,10 @@ export function GroupLinkCard({ code }: { code: string }) {
     return (
       <Card>
         <p className="text-sm text-slate-600">
-          회차 코드를 입력하면 교육생 배포용 링크와 QR이 여기에 표시됩니다.
+          회차를 발급하면 교육생 배포용 링크와 QR이 여기에 표시됩니다.
           <br />
           <span className="text-xs text-slate-400">
-            형식: 소문자·숫자·하이픈 1~24자 (예: 1124a)
+            발급 코드 형식: <code>MMDD-지점-랜덤3자</code> (예: 1124-chuncheon-7k2)
           </span>
         </p>
       </Card>
