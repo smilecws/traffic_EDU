@@ -5,7 +5,9 @@ import { Download, LogOut } from "lucide-react";
 import { normalizeGroupCode } from "@/lib/services/groupCodeService";
 import {
   AdminSessionExpiredError,
+  MIN_ATTEMPTS_OPTIONS,
   loadGroupStats,
+  maxUsableMinAttempts,
   toCsv,
   type GroupStats,
 } from "@/lib/services/adminStatsService";
@@ -153,6 +155,10 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
           classifier: DEFAULT_CLASSIFIER,
         });
         setStats(result);
+
+        // 임계값 때문에 결과가 통째로 비는 일을 막는다(세션 1회 회차 등).
+        const usable = maxUsableMinAttempts(result.questions);
+        if (usable !== null) setMinAttempts((prev) => Math.min(prev, usable));
       } catch (err) {
         setStats(null);
         if (err instanceof AdminSessionExpiredError) {
@@ -212,6 +218,12 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
     a.click();
     URL.revokeObjectURL(url);
   }
+
+  /** 이 회차에서 한 번이라도 틀린 문항 수 — 빈 목록의 사유를 가르는 데 쓴다. */
+  const wrongQuestionCount = useMemo(
+    () => (stats?.questions ?? []).filter((q) => q.wrong > 0).length,
+    [stats],
+  );
 
   const visibleQuestions = useMemo(
     () =>
@@ -414,7 +426,7 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
                           }
                           className="w-full rounded-xl border border-[#ebe9f5] bg-white px-3 py-2 text-sm text-slate-900"
                         >
-                          {[1, 2, 3, 5, 10].map((n) => (
+                          {MIN_ATTEMPTS_OPTIONS.map((n) => (
                             <option key={n} value={n}>
                               {n}건 이상
                             </option>
@@ -439,7 +451,10 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
                       </label>
                     </div>
 
-                    <WrongQuestionList questions={visibleQuestions} />
+                    <WrongQuestionList
+                      questions={visibleQuestions}
+                      wrongQuestionCount={wrongQuestionCount}
+                    />
                   </section>
                 </>
               )}
