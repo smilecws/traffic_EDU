@@ -6,6 +6,7 @@ import type {
   StatsScope,
 } from "@/lib/services/adminStatsService";
 import { Card } from "@/components/shared/Card";
+import { ZoomableImage } from "@/components/shared/ZoomableImage";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -95,14 +96,14 @@ export function WrongQuestionList({
                         </ul>
                       )}
 
-                    {/* 원본 치수가 제각각이라 확대하지 않고 최대 크기만 제한한다. */}
+                    {/* 원본 치수가 제각각이라 확대하지 않고 최대 크기만 제한하고,
+                        누르면 전체 화면으로 확대해 원본 크기까지 볼 수 있다. */}
                     {stat.question.images?.map((src) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <ZoomableImage
                         key={src}
                         src={src}
                         alt="문제 이미지"
-                        className="mx-auto block h-auto max-h-72 w-auto max-w-full rounded-lg border border-[#ebe9f5]"
+                        className="max-h-72"
                       />
                     ))}
 
@@ -154,12 +155,11 @@ export function WrongQuestionList({
                           {stat.question.explanation}
                         </p>
                         {stat.question.explanationImages?.map((src) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <ZoomableImage
                             key={src}
                             src={src}
                             alt="해설 이미지"
-                            className="mx-auto block h-auto max-h-72 w-auto max-w-full rounded-lg border border-[#ebe9f5]"
+                            className="max-h-72"
                           />
                         ))}
                       </div>

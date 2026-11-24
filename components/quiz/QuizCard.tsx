@@ -1,8 +1,11 @@
+"use client";
+
 import { Star } from "lucide-react";
 import type { Question } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
+import { ZoomableImage } from "@/components/shared/ZoomableImage";
 import { AnswerButton } from "./AnswerButton";
 
 export interface QuizCardProps {
@@ -66,14 +69,14 @@ export function QuizCard({
       )}
 
       {/* 문제 이미지 — 원본보다 확대하지 않고 최대 크기만 제한, 가운데 정렬.
-          (원본 치수가 71px~4624px로 제각각이라 w-full 강제 확대는 금지) */}
+          (원본 치수가 71px~4624px로 제각각이라 w-full 강제 확대는 금지)
+          대신 누르면 전체 화면으로 확대해 원본 크기까지 볼 수 있다. */}
       {question.images?.map((src) => (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <ZoomableImage
           key={src}
           src={src}
           alt="문제 이미지"
-          className="mx-auto block h-auto max-h-96 w-auto max-w-full rounded-lg border border-[#ebe9f5]"
+          className="max-h-96"
         />
       ))}
 
@@ -108,12 +111,11 @@ export function QuizCard({
             </p>
           </div>
           {question.explanationImages?.map((src) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <ZoomableImage
               key={src}
               src={src}
               alt="해설 이미지"
-              className="mx-auto block h-auto max-h-96 w-auto max-w-full rounded-lg border border-[#ebe9f5]"
+              className="max-h-96"
             />
           ))}
         </div>
