@@ -18,7 +18,7 @@ export default function MockHistoryPage() {
 
   return (
     <main className="mx-auto w-full max-w-md px-4 py-6 space-y-5">
-      <PageHeader title="모의고사 이력" />
+      <PageHeader title="모의고사 이력" parentHref="/quiz" />
 
       {isLoading || !history ? (
         <div className="flex items-center justify-center py-32">

@@ -5,10 +5,16 @@ import { captureGroupCodeFromSearch } from "@/lib/services/groupCodeService";
 import { fetchSessionState } from "@/lib/services/sessionService";
 import { setSurveyForCode } from "@/lib/services/surveyService";
 import { setAssignmentForCode } from "@/lib/services/assignmentService";
+import { markHistoryEntryPoint } from "@/lib/utils/appHistory";
 
 /**
  * 진입 URL의 `?g=`(교육 회차 코드)를 한 번 읽어 저장하고, 그 회차가 만족도
  * 조사를 받는지·지정 출제 문제가 있는지 **서버에 물어** 반영한다.
+ *
+ * 겸하여 진입 시점의 방문 기록 깊이를 기록한다(`markHistoryEntryPoint`).
+ * 루트 레이아웃에 항상 붙는 유일한 클라이언트 컴포넌트라, 어느 경로로 들어오든
+ * 사용자가 화면을 옮기기 전에 한 번 실행되는 자리이기 때문이다. ← 버튼이
+ * 뒤로가기를 쓸지 상위 화면으로 갈지 가리는 기준이 된다 — lib/utils/appHistory.ts.
  *
  * - 화면을 그리지 않는다(마운트 부수효과 전용).
  * - `useSearchParams` 대신 `window.location.search`를 읽어 Suspense 경계 없이 동작한다.
@@ -28,6 +34,10 @@ import { setAssignmentForCode } from "@/lib/services/assignmentService";
  */
 export default function GroupCodeCapture() {
   useEffect(() => {
+    // 진입 시점의 방문 기록 깊이 — 화면 이동(pushState)보다 먼저 기록해야 한다.
+    // 루트 레이아웃에 항상 붙는 컴포넌트라 어느 경로로 들어와도 한 번 실행된다.
+    markHistoryEntryPoint();
+
     const code = captureGroupCodeFromSearch(window.location.search);
     if (!code) return;
 

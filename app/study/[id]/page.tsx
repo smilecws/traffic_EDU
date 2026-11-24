@@ -27,7 +27,7 @@ export default function StudyDetailPage() {
   if (!topic) {
     return (
       <main className="mx-auto w-full max-w-md px-4 py-6 space-y-6">
-        <PageHeader title="학습하기" />
+        <PageHeader title="학습하기" parentHref="/study" />
         <div className="space-y-4 py-10 text-center">
           <p className="text-sm text-slate-400">
             해당 학습 주제를 찾을 수 없습니다.
@@ -42,7 +42,7 @@ export default function StudyDetailPage() {
 
   return (
     <main className="mx-auto w-full max-w-md px-4 py-6 space-y-6">
-      <PageHeader title={topic.title} />
+      <PageHeader title={topic.title} parentHref="/study" />
 
       {topic.sub_topics.map((sub) => (
         <section key={sub.marker} className="space-y-3">
