@@ -47,7 +47,11 @@ export default function ResultPage() {
 
     // 답한 문제 → 익명 집계 (Firestore, best-effort). 오답률 산출용 전체 시도 기록.
     // 개인 식별 정보 없음. 미응답(빈 선택)은 logAnswers 내부에서 제외한다.
-    void logAnswers(detail.results);
+    // 풀이 도중 페이지를 떠나며 이미 보낸 문제는 빼서 두 번 집계되지 않게 한다.
+    const alreadyLogged = new Set(detail.meta?.loggedQuestionIds ?? []);
+    void logAnswers(
+      detail.results.filter((r) => !alreadyLogged.has(r.questionId)),
+    );
 
     // 모의고사면 이력에도 1회 기록 (멱등 가드 안 → 새로고침 중복 방지, localStorage 전용).
     const meta = detail.meta;
