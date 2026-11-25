@@ -125,4 +125,10 @@ export interface SessionMeta {
   licenseId?: string; // mock일 때만
   passScore?: number; // mock일 때만 (합격 기준 점수)
   durationMs?: number; // mock일 때만 (제한 시간)
+  /**
+   * 풀이 도중 이미 익명 집계(`answer_logs`)로 보낸 문제 id.
+   * 페이지를 잠시 떠났다가(bfcache 복원 등) 이어서 끝낸 경우, 결과 화면이
+   * 같은 문제를 두 번 집계하지 않도록 빼는 데 쓴다.
+   */
+  loggedQuestionIds?: string[];
 }

@@ -21,8 +21,9 @@ import { isAnswerCorrect } from "@/lib/utils/calculateScore";
 import { useAppStore } from "@/lib/store/appStore";
 import { saveSessionResult } from "@/lib/services/sessionResultService";
 import { getAssignmentPicks } from "@/lib/services/assignmentService";
+import { beaconAnswers, logAnswers } from "@/lib/services/answerLogService";
 import { getLicense, MOCK_DURATION_MS } from "@/lib/data/licenses";
-import type { QuizMode, SessionMeta } from "@/lib/types";
+import type { QuestionResult, QuizMode, SessionMeta } from "@/lib/types";
 import { QuizCard } from "@/components/quiz/QuizCard";
 import { QuizProgress } from "@/components/quiz/QuizProgress";
 import { Button } from "@/components/shared/Button";
@@ -92,6 +93,54 @@ function QuizPlayInner() {
   const startedRef = useRef(false);
   const finishedRef = useRef(false);
 
+  /**
+   * 중간 이탈 시 익명 집계(`answer_logs`).
+   *
+   * 예전에는 결과 화면에 도착해야만 집계됐다. 그래서 교육생이 도중에 나가면
+   * 그때까지 답한 문제도 회차 통계에서 통째로 빠졌다. 이제 나가는 순간 답한
+   * 문제를 보낸다. 이미 보낸 문제 id를 기억해 두어, 페이지가 bfcache로
+   * 되살아나 이어서 끝내더라도 같은 문제가 두 번 집계되지 않게 한다.
+   *
+   * 이탈 핸들러(popstate·pagehide)는 렌더와 무관한 시점에 불리므로 최신
+   * 세션을 ref로 들고 간다.
+   */
+  const sessionRef = useRef(session);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+  const loggedIdsRef = useRef<Set<string>>(new Set());
+
+  /** 아직 집계로 보내지 않은, 실제로 답한 문제를 꺼내고 "보냄"으로 표시한다. */
+  const takeUnlogged = useCallback((): QuestionResult[] => {
+    const results = sessionRef.current?.results ?? [];
+    const pending = results.filter(
+      (r) => r.selectedIds.length > 0 && !loggedIdsRef.current.has(r.questionId),
+    );
+    for (const r of pending) loggedIdsRef.current.add(r.questionId);
+    return pending;
+  }, []);
+
+  // 새로고침·탭 닫기·다른 사이트로 이동. 일반 Firestore 쓰기는 페이지와 함께
+  // 끊기므로 비콘으로 보낸다. 채점이 끝난 뒤(결과 화면 이동)에는 결과 화면이 맡는다.
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (finishedRef.current) return;
+      beaconAnswers(takeUnlogged());
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [takeUnlogged]);
+
+  // 앱 안에서 풀이 화면을 벗어남 — ← 버튼, 브라우저 뒤로가기, 상단·하단 메뉴 등
+  // 경로와 상관없이 화면이 닫힐 때 한 번 보낸다. 페이지는 살아 있으므로 일반
+  // 쓰기로 충분하다. 채점이 끝나 결과 화면으로 가는 경우는 결과 화면이 맡는다.
+  useEffect(() => {
+    return () => {
+      if (finishedRef.current) return;
+      void logAnswers(takeUnlogged());
+    };
+  }, [takeUnlogged]);
+
   // 풀이 중 나가기. 모의고사는 응시가 무효화되므로 확인 후 나간다.
   // router.back()은 방문 기록에 의존해 기록이 얕으면(모바일 딥링크/새 탭/PWA)
   // 사이트 밖으로 나가버린다. 기록과 무관하게 항상 문제 풀기 허브로 가도록 replace 사용.
@@ -101,7 +150,7 @@ function QuizPlayInner() {
       !isMock ||
       finishedRef.current ||
       window.confirm(
-        "모의고사를 종료하고 나갈까요?\n지금까지 응시한 내용은 저장되지 않습니다.",
+        "모의고사를 종료하고 나갈까요?\n채점 결과와 응시 이력은 남지 않습니다.",
       ),
     onLeave: () => {
       setQuizInProgress(false);
@@ -155,6 +204,10 @@ function QuizPlayInner() {
             durationMs: MOCK_DURATION_MS,
           }
         : { mode };
+      // 도중에 이미 집계로 보낸 문제가 있으면 결과 화면이 빼고 보내도록 알린다.
+      if (loggedIdsRef.current.size > 0) {
+        meta.loggedQuestionIds = [...loggedIdsRef.current];
+      }
       // finish()가 반환한 results(미응답 채움 포함)를 저장 → 오답노트/집계 누락 방지.
       saveSessionResult({ result, results, meta });
       // replace로 진입 — 끝난 퀴즈는 히스토리에 남기지 않아, 결과에서 뒤로가기 시
