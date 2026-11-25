@@ -22,6 +22,7 @@ import { useAppStore } from "@/lib/store/appStore";
 import { saveSessionResult } from "@/lib/services/sessionResultService";
 import { getAssignmentPicks } from "@/lib/services/assignmentService";
 import { beaconAnswers, logAnswers } from "@/lib/services/answerLogService";
+import { markSolved } from "@/lib/services/solvedService";
 import { getLicense, MOCK_DURATION_MS } from "@/lib/data/licenses";
 import type { QuestionResult, QuizMode, SessionMeta } from "@/lib/types";
 import { QuizCard } from "@/components/quiz/QuizCard";
@@ -302,6 +303,8 @@ function QuizPlayInner() {
   const persistAnswer = (selected: number[]) => {
     const correct = isAnswerCorrect(selected, currentQuestion.answerIds);
     recordAnswer(correct);
+    // 문제별 "푼 적 있음" — 랜덤 출제가 안 푼 문제를 먼저 고르는 데 쓴다.
+    markSolved(currentQuestion.id);
     if (!correct) {
       addWrongNote({
         questionId: currentQuestion.id,

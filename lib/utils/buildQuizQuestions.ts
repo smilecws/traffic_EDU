@@ -8,8 +8,10 @@ const SESSION_SIZE = 40;
  * 모드에 따라 세션 문제 목록을 구성하는 순수 함수.
  * - opts.questionIds 지정 시: **모드와 무관하게** 그 id들만(순서 보존). 오답노트에서
  *   특정 문제 1개만 다시 풀기 등에 사용. 존재하지 않는 id는 무시.
- * - random | mock: 전체에서 무작위 40개(부족하면 가능한 만큼).
- *   opts.type이 주어지면 해당 유형으로 먼저 거른 뒤 무작위 추출.
+ * - random: **아직 안 푼 문제**에서 무작위 40개. 안 푼 문제가 40개보다 적으면
+ *   모자란 만큼 푼 문제에서 무작위로 채운다(모두 풀었으면 전체에서 무작위).
+ *   opts.type이 주어지면 해당 유형으로 먼저 거른다. 푼 문제 목록은 sources.solvedIds.
+ * - mock: 전체에서 무작위 40개 — 실전 연습이라 푼 문제 여부를 따지지 않는다.
  * - sequential: opts.startNumber 이상인 문제를 **번호 오름차순으로 전부**(테스트용).
  * - wrong | favorite: 지정 id에 해당하는 문제만, 지정 id의 **순서를 보존**.
  *   (최근 우선 정렬은 호출측 책임. 존재하지 않는 id는 무시.)
@@ -22,7 +24,13 @@ const SESSION_SIZE = 40;
  */
 export function buildQuizQuestions(
   mode: QuizMode,
-  sources: { all: Question[]; wrongIds: string[]; favoriteIds: string[] },
+  sources: {
+    all: Question[];
+    wrongIds: string[];
+    favoriteIds: string[];
+    /** 한 번이라도 답한 문제 id — random 모드에서 안 푼 문제를 먼저 고르는 데 쓴다. */
+    solvedIds?: string[];
+  },
   opts: { type?: string; startNumber?: number; questionIds?: string[] } = {},
 ): Question[] {
   const { all, wrongIds, favoriteIds } = sources;
@@ -45,7 +53,20 @@ export function buildQuizQuestions(
 
   if (mode === "random" || mode === "mock") {
     const pool = type ? all.filter((q) => q.type === type) : all;
-    return pickRandom(pool, SESSION_SIZE);
+    if (mode === "mock") return pickRandom(pool, SESSION_SIZE);
+
+    const solved = new Set(sources.solvedIds ?? []);
+    const fresh = pool.filter((q) => !solved.has(q.id));
+    const picked = pickRandom(fresh, SESSION_SIZE);
+    if (picked.length >= SESSION_SIZE) return picked;
+
+    // 안 푼 문제가 모자라면 푼 문제로 채우고, 순서는 다시 섞는다
+    // (안 푼 문제가 앞에 몰려 있으면 "새 문제는 앞쪽"이라는 게 드러난다).
+    const filler = pickRandom(
+      pool.filter((q) => solved.has(q.id)),
+      SESSION_SIZE - picked.length,
+    );
+    return pickRandom([...picked, ...filler], SESSION_SIZE);
   }
 
   // 지정 출제는 목록이 전부다 — questionIds가 비었으면 풀 문제가 없는 것이다.

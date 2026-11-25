@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ClipboardList,
@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { useStats } from "@/lib/hooks/useStats";
 import { useWrongNotes } from "@/lib/hooks/useWrongNotes";
+import { useQuestions } from "@/lib/hooks/useQuestions";
+import { useSolved } from "@/lib/hooks/useSolved";
 import { LICENSE_TYPES } from "@/lib/data/licenses";
 import { QUESTION_TYPES } from "@/lib/data/questionTypes";
 import type { TileColor } from "@/components/shared/IconTile";
@@ -61,6 +63,38 @@ export default function QuizHubPage() {
   const [startInput, setStartInput] = useState("1");
   const { data: stats } = useStats();
   const { data: notes } = useWrongNotes();
+  const { data: questions } = useQuestions();
+  const { data: solved, resetSolved } = useSolved();
+
+  /**
+   * 유형별 "안 푼 문제" 수. 키 ""는 전체.
+   * 문제 데이터가 아직 없으면 null — 시트는 기본 문구로 보여 준다.
+   */
+  const unsolvedByType = useMemo(() => {
+    if (!questions || !solved) return null;
+    const counts = new Map<string, number>([["", 0]]);
+    for (const q of questions) {
+      if (solved.has(q.id)) continue;
+      counts.set("", (counts.get("") ?? 0) + 1);
+      if (q.type) counts.set(q.type, (counts.get(q.type) ?? 0) + 1);
+    }
+    return counts;
+  }, [questions, solved]);
+
+  /** 시트 행의 부제 — 안 푼 문제가 남았는지, 다 풀었는지 알려 준다. */
+  const unsolvedLabel = (type: string, fallback?: string) => {
+    if (!unsolvedByType) return fallback;
+    const n = unsolvedByType.get(type) ?? 0;
+    return n === 0 ? "모두 풀었어요 · 전체에서 랜덤 40문제" : `안 푼 문제 ${n}개`;
+  };
+  const solvedCount = solved?.size ?? 0;
+
+  function handleResetSolved() {
+    const ok = window.confirm(
+      "푼 문제 기록을 초기화할까요?\n모든 문제가 다시 '안 푼 문제'가 됩니다. 정답률과 오답노트는 그대로 남습니다.",
+    );
+    if (ok) resetSolved();
+  }
 
   // 순서대로 풀기 — 입력 번호 검증 후 sequential 모드로 이동.
   const startNumber = Number(startInput);
@@ -94,7 +128,7 @@ export default function QuizHubPage() {
             <Flag size={20} strokeWidth={1.5} className="text-violet-500" />
             <span className="text-xs font-medium text-slate-400">진도</span>
             <span className="text-xl font-bold text-slate-900 tabular-nums">
-              {totalAnswered}/1000
+              {Math.min(solvedCount, TOTAL_QUESTIONS)}/{TOTAL_QUESTIONS}
             </span>
           </div>
           <div className="flex flex-col items-center gap-1 px-2">
@@ -188,15 +222,15 @@ export default function QuizHubPage() {
         open={typeSheetOpen}
         onClose={() => setTypeSheetOpen(false)}
         title="문제 유형 선택"
-        subtitle="유형을 선택하면 해당 유형에서 랜덤 40문제가 출제됩니다."
+        subtitle="아직 안 푼 문제 중에서 랜덤 40문제가 출제됩니다. 안 푼 문제가 모자라면 푼 문제로 채웁니다."
       >
         <div className="space-y-2.5">
-          {/* 전체 — 유형 무관 랜덤 (기존 동작) */}
+          {/* 전체 — 유형 무관, 안 푼 문제 우선 랜덤 */}
           <OptionRow
             icon={<Shuffle {...iconProps} />}
             color="violet"
             title="전체"
-            subtitle="모든 유형 랜덤 40문제"
+            subtitle={unsolvedLabel("", "모든 유형 랜덤 40문제")}
             onClick={() => {
               setTypeSheetOpen(false);
               router.push("/quiz/play?mode=random");
@@ -210,7 +244,7 @@ export default function QuizHubPage() {
                 icon={style?.icon ?? <FileText {...iconProps} />}
                 color={style?.color ?? "violet"}
                 title={t.label}
-                subtitle={style?.subtitle}
+                subtitle={unsolvedLabel(t.value, style?.subtitle)}
                 onClick={() => {
                   setTypeSheetOpen(false);
                   router.push(
@@ -220,6 +254,15 @@ export default function QuizHubPage() {
               />
             );
           })}
+          {solvedCount > 0 && (
+            <button
+              type="button"
+              onClick={handleResetSolved}
+              className="w-full rounded-lg py-2 text-center text-xs font-medium text-slate-400 transition-colors hover:text-slate-600"
+            >
+              푼 문제 기록 초기화 (현재 {solvedCount}문제)
+            </button>
+          )}
         </div>
       </BottomSheet>
 

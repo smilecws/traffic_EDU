@@ -226,4 +226,74 @@ describe("buildQuizQuestions", () => {
       expect(result).toHaveLength(10);
     });
   });
+
+  describe("random 모드 — 안 푼 문제 우선", () => {
+    const ids = (qs: Question[]) => qs.map((q) => q.id);
+
+    it("안 푼 문제가 40개 이상이면 안 푼 문제만 낸다", () => {
+      const solvedIds = ["q0", "q1", "q2", "q3", "q4"]; // 50개 중 5개 풂 → 45개 남음
+      for (let i = 0; i < 20; i += 1) {
+        const result = buildQuizQuestions("random", {
+          all,
+          wrongIds: [],
+          favoriteIds: [],
+          solvedIds,
+        });
+        expect(result).toHaveLength(40);
+        expect(ids(result).some((id) => solvedIds.includes(id))).toBe(false);
+      }
+    });
+
+    it("안 푼 문제가 모자라면 전부 넣고 나머지를 푼 문제로 채운다", () => {
+      const unsolved = ["q40", "q41", "q42"];
+      const solvedIds = ids(all).filter((id) => !unsolved.includes(id));
+      const result = buildQuizQuestions("random", {
+        all,
+        wrongIds: [],
+        favoriteIds: [],
+        solvedIds,
+      });
+      expect(result).toHaveLength(40);
+      expect(new Set(ids(result)).size).toBe(40);
+      for (const id of unsolved) expect(ids(result)).toContain(id);
+    });
+
+    it("모두 풀었으면 전체에서 무작위 40개", () => {
+      const result = buildQuizQuestions("random", {
+        all,
+        wrongIds: [],
+        favoriteIds: [],
+        solvedIds: ids(all),
+      });
+      expect(result).toHaveLength(40);
+    });
+
+    it("유형 필터 안에서 안 푼 문제를 고른다", () => {
+      const typed = all.map((q, i) => ({ ...q, type: i < 10 ? "A" : "B" }));
+      const result = buildQuizQuestions(
+        "random",
+        { all: typed, wrongIds: [], favoriteIds: [], solvedIds: ["q0", "q1"] },
+        { type: "A" },
+      );
+      // 유형 A는 10문제뿐 — 안 푼 8개를 모두 넣고 푼 2개로 채운다.
+      expect(result).toHaveLength(10);
+      expect(result.every((q) => q.type === "A")).toBe(true);
+      for (let i = 2; i < 10; i += 1) expect(ids(result)).toContain(`q${i}`);
+    });
+
+    it("모의고사는 푼 문제 여부를 따지지 않는다", () => {
+      const solvedIds = ids(all).slice(0, 45);
+      const seen = new Set<string>();
+      for (let i = 0; i < 20; i += 1) {
+        const result = buildQuizQuestions("mock", {
+          all,
+          wrongIds: [],
+          favoriteIds: [],
+          solvedIds,
+        });
+        for (const id of ids(result)) seen.add(id);
+      }
+      expect([...seen].some((id) => solvedIds.includes(id))).toBe(true);
+    });
+  });
 });

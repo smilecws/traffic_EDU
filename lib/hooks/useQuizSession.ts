@@ -10,6 +10,7 @@ import type {
 import { loadQuestions } from "@/lib/services/questionsService";
 import { getWrongNotes } from "@/lib/services/wrongNoteService";
 import { getFavorites } from "@/lib/services/favoriteService";
+import { getSolvedIds } from "@/lib/services/solvedService";
 import { buildQuizQuestions } from "@/lib/utils/buildQuizQuestions";
 import { gradeSession, isAnswerCorrect } from "@/lib/utils/calculateScore";
 
@@ -54,9 +55,11 @@ export function useQuizSession() {
           nextMode === "favorite"
             ? getFavorites().map((f) => f.questionId)
             : [];
+        // random 모드만 "안 푼 문제 우선"이라 푼 문제 기록을 읽는다.
+        const solvedIds = nextMode === "random" ? getSolvedIds() : [];
         const picked = buildQuizQuestions(
           nextMode,
-          { all, wrongIds, favoriteIds },
+          { all, wrongIds, favoriteIds, solvedIds },
           {
             type: opts?.type,
             startNumber: opts?.startNumber,
