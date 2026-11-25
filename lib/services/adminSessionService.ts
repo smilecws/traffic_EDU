@@ -77,3 +77,58 @@ export async function loadRecentSessions(limit = 20): Promise<AdminSession[]> {
   const body = (await res.json()) as { sessions?: AdminSession[] };
   return Array.isArray(body.sessions) ? body.sessions : [];
 }
+
+/** 삭제 결과 — 서버가 실제로 지운 건수. */
+export interface DeletedCounts {
+  /** 지운 답안 로그(오답 통계 원본) 수. */
+  answerLogs: number;
+  /** 지운 만족도 응답 수. */
+  surveyResponses: number;
+  /** 회차(QR) 등록부 문서를 지웠는지. 통계만 지운 경우 false. */
+  session: boolean;
+}
+
+/**
+ * 회차를 삭제한다 — QR(등록부)과 그 회차의 만족도 응답·오답 통계를
+ * Firestore에서 함께 지운다. 되돌릴 수 없다.
+ */
+export async function deleteSession(code: string): Promise<DeletedCounts> {
+  const res = await fetch(
+    `/api/admin/sessions?code=${encodeURIComponent(code)}`,
+    { method: "DELETE", cache: "no-store" },
+  );
+
+  if (res.status === 401) throw new AdminSessionExpiredError();
+  if (!res.ok) throw new Error(await readError(res, "회차를 삭제하지 못했습니다."));
+
+  const body = (await res.json()) as { deleted: DeletedCounts };
+  return body.deleted;
+}
+
+/**
+ * 회차의 통계만 삭제한다 — 오답 통계(답안 로그)와 만족도 응답. QR은 남는다.
+ * Firestore에서 지우므로 되돌릴 수 없다.
+ */
+export async function deleteSessionStats(code: string): Promise<DeletedCounts> {
+  const res = await fetch(`/api/admin/stats?code=${encodeURIComponent(code)}`, {
+    method: "DELETE",
+    cache: "no-store",
+  });
+
+  if (res.status === 401) throw new AdminSessionExpiredError();
+  if (!res.ok) throw new Error(await readError(res, "통계를 삭제하지 못했습니다."));
+
+  const body = (await res.json()) as { deleted: DeletedCounts };
+  return body.deleted;
+}
+
+/** 삭제 결과를 한 줄로 — "오답 기록 12건, 만족도 응답 8건을 삭제했습니다." */
+export function describeDeleted(deleted: DeletedCounts): string {
+  const parts = [
+    `오답 기록 ${deleted.answerLogs}건`,
+    `만족도 응답 ${deleted.surveyResponses}건`,
+  ];
+  return deleted.session
+    ? `회차와 ${parts.join(", ")}을 삭제했습니다.`
+    : `${parts.join(", ")}을 삭제했습니다.`;
+}
