@@ -263,3 +263,100 @@ export async function recordSurveyResponse(
     return { ok: true as const };
   });
 }
+
+/** 답안 로그 컬렉션 이름 — 문항별 오답 통계의 원본. */
+export const ANSWER_LOGS_COLLECTION = "answer_logs";
+
+/**
+ * 한 번에 지우는 문서 수. Firestore 일괄 쓰기 상한(500)보다 낮게 잡아
+ * 한 묶음이 상한에 걸리지 않게 한다.
+ */
+const DELETE_BATCH_SIZE = 400;
+
+/** 회차 데이터를 지운 결과 — 화면이 "몇 건을 지웠는지" 알려 주는 데 쓴다. */
+export interface DeletedCounts {
+  /** 지운 답안 로그(오답 통계 원본) 수. */
+  answerLogs: number;
+  /** 지운 만족도 응답 수. */
+  surveyResponses: number;
+  /** 회차 등록부 문서(QR)를 지웠는지. 통계만 지운 경우 false. */
+  session: boolean;
+}
+
+/**
+ * 한 컬렉션에서 `g == code`인 문서를 전부 지운다.
+ *
+ * 한 번에 다 읽지 않고 묶음 단위로 읽고 지우기를 반복한다 — 회차 하나의
+ * 문서 수가 일괄 쓰기 상한을 넘을 수 있기 때문이다.
+ */
+async function deleteByGroupCode(
+  db: Firestore,
+  collection: string,
+  code: string,
+): Promise<number> {
+  let total = 0;
+  for (;;) {
+    const snap = await db
+      .collection(collection)
+      .where("g", "==", code)
+      .limit(DELETE_BATCH_SIZE)
+      .get();
+    if (snap.empty) return total;
+
+    const batch = db.batch();
+    for (const doc of snap.docs) batch.delete(doc.ref);
+    await batch.commit();
+
+    total += snap.size;
+    if (snap.size < DELETE_BATCH_SIZE) return total;
+  }
+}
+
+/**
+ * 회차의 **통계만** 지운다 — 오답 통계 원본(`answer_logs`)과 만족도 응답
+ * (`survey_responses`). 회차(QR)는 남는다.
+ *
+ * 등록부의 응답 수(`surveyCount`)도 0으로 되돌린다. 그러지 않으면 응답은
+ * 지워졌는데 상한 계산은 지운 응답까지 세어, 남은 교육 시간에 설문이
+ * 일찍 닫힐 수 있다.
+ *
+ * Firestore에서 실제로 지우므로 되돌릴 수 없다.
+ */
+export async function deleteSessionStats(
+  db: Firestore,
+  code: string,
+): Promise<DeletedCounts> {
+  const surveyResponses = await deleteByGroupCode(db, SURVEY_COLLECTION, code);
+  const answerLogs = await deleteByGroupCode(db, ANSWER_LOGS_COLLECTION, code);
+
+  const ref = db.collection(SESSIONS_COLLECTION).doc(code);
+  const snap = await ref.get();
+  if (snap.exists) await ref.update({ surveyCount: 0 });
+
+  return { answerLogs, surveyResponses, session: false };
+}
+
+/**
+ * 회차를 통째로 지운다 — 등록부 문서(QR)와 그 회차의 만족도 응답·오답 통계.
+ *
+ * 등록부 문서를 **먼저** 지운다. 그래야 지우는 도중에 들어온 만족도 응답이
+ * "등록되지 않은 회차"로 거부되어, 지운 뒤에 응답이 새로 남는 일이 없다.
+ *
+ * 이미 배포한 QR 이미지는 남지만, 그 QR로 들어와도 등록부에 회차가 없으므로
+ * 설문과 지정 출제가 뜨지 않는다.
+ *
+ * Firestore에서 실제로 지우므로 되돌릴 수 없다.
+ */
+export async function deleteSession(
+  db: Firestore,
+  code: string,
+): Promise<DeletedCounts> {
+  const ref = db.collection(SESSIONS_COLLECTION).doc(code);
+  const snap = await ref.get();
+  if (snap.exists) await ref.delete();
+
+  const surveyResponses = await deleteByGroupCode(db, SURVEY_COLLECTION, code);
+  const answerLogs = await deleteByGroupCode(db, ANSWER_LOGS_COLLECTION, code);
+
+  return { answerLogs, surveyResponses, session: snap.exists };
+}

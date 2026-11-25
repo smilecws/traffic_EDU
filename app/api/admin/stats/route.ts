@@ -3,6 +3,10 @@ import { Timestamp, type Query } from "firebase-admin/firestore";
 import { ADMIN_COOKIE, verifySessionValue } from "@/lib/server/adminAuth";
 import { getAdminDb } from "@/lib/server/firebaseAdmin";
 import { DATE_PATTERN, kstDayBoundary } from "@/lib/utils/kstDate";
+import {
+  deleteSessionStats,
+  type DeletedCounts,
+} from "@/lib/server/sessionRegistry";
 
 /**
  * 관리자 전용 — 문항별 시도/오답 수 집계.
@@ -18,6 +22,10 @@ import { DATE_PATTERN, kstDayBoundary } from "@/lib/utils/kstDate";
  *   - 기간 지정: `?scope=all&from=2026-11-01&to=2026-11-23`
  *   - 전체 기간: `?scope=all` (날짜를 비우면 컬렉션 전체)
  *   날짜는 둘 다 주거나 둘 다 비워야 한다. 하나만 오면 400.
+ *
+ * 삭제는 회차별로만 한다: `DELETE /api/admin/stats?code=1124a`
+ * 그 회차의 답안 로그와 만족도 응답을 Firestore에서 지운다(기간 무관, 되돌릴 수
+ * 없음). 회차(QR)는 남는다. 회차 코드 없이 들어온 기록은 지우지 않는다.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -139,6 +147,51 @@ export async function GET(request: NextRequest) {
       sessions: snapshot.size,
       counts,
     },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
+
+export async function DELETE(request: NextRequest) {
+  if (!verifySessionValue(request.cookies.get(ADMIN_COOKIE)?.value)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const code = (request.nextUrl.searchParams.get("code") ?? "")
+    .trim()
+    .toLowerCase();
+  if (!CODE_PATTERN.test(code)) {
+    return NextResponse.json(
+      { error: "회차 코드 형식이 올바르지 않습니다." },
+      { status: 400 },
+    );
+  }
+
+  const db = getAdminDb();
+  if (!db) {
+    return NextResponse.json(
+      {
+        error:
+          "서버에 FIREBASE_SERVICE_ACCOUNT가 설정되지 않아 삭제할 수 없습니다.",
+      },
+      { status: 503 },
+    );
+  }
+
+  let deleted: DeletedCounts;
+  try {
+    deleted = await deleteSessionStats(db, code);
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "통계를 삭제하지 못했습니다. 일부만 지워졌을 수 있으니 다시 시도해 주세요.",
+      },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json(
+    { deleted },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

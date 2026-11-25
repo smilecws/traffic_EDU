@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, LogOut } from "lucide-react";
+import { Download, LogOut, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { normalizeGroupCode } from "@/lib/services/groupCodeService";
 import {
   AdminSessionExpiredError,
@@ -18,6 +19,10 @@ import {
   type SurveyStats,
 } from "@/lib/services/adminSurveyService";
 import type { CalendarDay } from "@/lib/services/adminCalendarService";
+import {
+  deleteSessionStats,
+  describeDeleted,
+} from "@/lib/services/adminSessionService";
 import { DEFAULT_CLASSIFIER } from "@/lib/services/questionClassifier";
 import { useQuestions } from "@/lib/hooks/useQuestions";
 import { Button } from "@/components/shared/Button";
@@ -164,6 +169,11 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
   const [survey, setSurvey] = useState<SurveyStats | null>(null);
   const [surveyError, setSurveyError] = useState<string | null>(null);
 
+  /** 회차 통계 삭제 — 진행 중 여부와 결과 안내. */
+  const queryClient = useQueryClient();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+
   /** 달력에서 펼쳐 둔 날 — 회차를 아직 고르지 않았을 때 안내를 띄우는 데 쓴다. */
   const [pickedDay, setPickedDay] = useState<CalendarDay | null>(null);
 
@@ -201,6 +211,7 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
       if (!questions) return;
       setBusy(true);
       setError(null);
+      setDeleteNotice(null);
       // 조회가 시작되면 이전 결과를 즉시 버린다 — 낡은 숫자가 남아 있으면
       // 화면이 "안 바뀐 것"처럼 보인다.
       setStats(null);
@@ -241,6 +252,7 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
       if (!questions) return;
       setBusy(true);
       setError(null);
+      setDeleteNotice(null);
       setStats(null);
       setSurvey(null);
       setSurveyError(null);
@@ -334,6 +346,41 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
     },
     [handleCalendarSelect],
   );
+
+  /**
+   * 지금 보고 있는 회차의 통계를 지운다 — 오답 통계(답안 로그)와 만족도 응답을
+   * Firestore에서 지운다. QR 회차는 남는다. 되돌릴 수 없으므로 한 번 더 묻는다.
+   *
+   * 조회 기간과 상관없이 **그 회차의 기록 전부**를 지운다.
+   */
+  async function handleDeleteStats() {
+    if (!stats || stats.scope !== "group" || deleting) return;
+    const target = { code: stats.code, from: stats.from, to: stats.to };
+    const ok = window.confirm(
+      `${target.code} 회차의 통계를 삭제할까요?\n\n` +
+        "이 회차의 오답 통계와 만족도 응답이 Firebase에서 삭제되며 되돌릴 수 없습니다.\n" +
+        "조회 기간과 상관없이 이 회차의 기록 전부가 지워집니다. QR 회차는 그대로 남습니다.",
+    );
+    if (!ok) return;
+
+    setDeleting(true);
+    try {
+      const deleted = await deleteSessionStats(target.code);
+      // 달력의 응답 수도 바뀌었으니 다시 읽게 한다.
+      void queryClient.invalidateQueries({ queryKey: ["adminCalendar"] });
+      // 다시 조회해 빈 결과를 보여 준다(조회가 안내를 지우므로 그 뒤에 적는다).
+      await runLoad(target);
+      setDeleteNotice(describeDeleted(deleted));
+    } catch (err) {
+      if (err instanceof AdminSessionExpiredError) {
+        onSessionExpired();
+        return;
+      }
+      setError(err instanceof Error ? err.message : "통계를 삭제하지 못했습니다.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function handleDownload() {
     if (!stats) return;
@@ -570,6 +617,14 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
             </Card>
           )}
 
+          {deleteNotice && !busy && (
+            <Card>
+              <p role="status" className="text-sm text-slate-600">
+                {deleteNotice}
+              </p>
+            </Card>
+          )}
+
           {/* 날짜만 고른 상태 — 결과가 없는 이유를 비워 두지 않고 말해 준다. */}
           {!stats && !busy && !error && pickedDay && (
             <Card>
@@ -629,6 +684,21 @@ function AdminConsole({ onSessionExpired }: { onSessionExpired: () => void }) {
                         ? "이 기간에는 응답 기록이 없습니다. 기간을 넓혀 보세요."
                         : "아직 쌓인 응답 기록이 없습니다."}
                   </p>
+                )}
+                {/* 회차별 삭제만 허용한다 — 회차 무관 조회에는 버튼을 두지 않는다. */}
+                {stats.scope === "group" && (
+                  <div className="flex justify-end border-t border-[#ebe9f5] pt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={deleting}
+                      onClick={() => void handleDeleteStats()}
+                      className="text-slate-500 hover:text-red-500"
+                    >
+                      <Trash2 size={15} strokeWidth={1.5} />
+                      {deleting ? "삭제 중…" : "이 회차 통계 삭제"}
+                    </Button>
+                  </div>
                 )}
               </Card>
 

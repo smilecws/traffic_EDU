@@ -10,6 +10,8 @@ import {
   saveAdminSurveyFlag,
 } from "@/lib/services/groupCodeService";
 import {
+  deleteSession,
+  describeDeleted,
   issueSession,
   loadRecentSessions,
   type AdminSession,
@@ -112,6 +114,13 @@ export function IssueSessionCard({
   const [sessions, setSessions] = useState<AdminSession[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+
+  /** 삭제 중인 회차 코드(버튼 잠금용)와 삭제 결과 안내. */
+  const [deletingCode, setDeletingCode] = useState<string | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<{
+    tone: "ok" | "error";
+    text: string;
+  } | null>(null);
 
   const expire = useCallback(
     (err: unknown): boolean => {
@@ -228,6 +237,39 @@ export function IssueSessionCard({
       setSetsError(
         err instanceof Error ? err.message : "세트를 지우지 못했습니다.",
       );
+    }
+  }
+
+  /**
+   * 회차를 삭제한다 — QR과 그 회차의 만족도 응답·오답 통계를 Firestore에서
+   * 함께 지운다. 되돌릴 수 없으므로 반드시 한 번 더 묻는다.
+   */
+  async function handleDeleteSession(entry: AdminSession) {
+    if (deletingCode) return;
+    const label = entry.branch ? `${entry.branch} (${entry.code})` : entry.code;
+    const ok = window.confirm(
+      `${label} 회차를 삭제할까요?\n\n` +
+        "QR 회차와 이 회차의 만족도 응답·오답 통계가 Firebase에서 함께 삭제되며 되돌릴 수 없습니다.\n" +
+        "이미 배포한 QR로 들어와도 설문과 지정 문제가 더 이상 뜨지 않습니다.",
+    );
+    if (!ok) return;
+
+    setDeletingCode(entry.code);
+    setDeleteNotice(null);
+    try {
+      const deleted = await deleteSession(entry.code);
+      setSessions((prev) => prev.filter((e) => e.code !== entry.code));
+      // 지운 회차의 QR이 화면에 떠 있으면 내린다.
+      if (code === entry.code) setCode("");
+      setDeleteNotice({ tone: "ok", text: describeDeleted(deleted) });
+    } catch (err) {
+      if (expire(err)) return;
+      setDeleteNotice({
+        tone: "error",
+        text: err instanceof Error ? err.message : "회차를 삭제하지 못했습니다.",
+      });
+    } finally {
+      setDeletingCode(null);
     }
   }
 
@@ -503,12 +545,12 @@ export function IssueSessionCard({
         {sessions.length > 0 && (
           <ul className="space-y-1">
             {sessions.map((entry) => (
-              <li key={entry.code}>
+              <li key={entry.code} className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setCode(entry.code)}
                   className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition-colors",
+                    "flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition-colors",
                     entry.code === code
                       ? "border-violet-400 bg-violet-50"
                       : "border-[#ebe9f5] hover:bg-[#f5f4fb]",
@@ -530,9 +572,34 @@ export function IssueSessionCard({
                     </span>
                   </span>
                 </button>
+                <button
+                  type="button"
+                  aria-label={`${entry.code} 회차 삭제`}
+                  disabled={deletingCode !== null}
+                  onClick={() => void handleDeleteSession(entry)}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ebe9f5] bg-white text-slate-400 transition-colors hover:bg-[#f5f4fb] hover:text-red-500 disabled:opacity-50"
+                >
+                  {deletingCode === entry.code ? (
+                    <Spinner label="삭제 중" className="h-4 w-4" />
+                  ) : (
+                    <Trash2 size={15} strokeWidth={1.5} />
+                  )}
+                </button>
               </li>
             ))}
           </ul>
+        )}
+
+        {deleteNotice && (
+          <p
+            role="status"
+            className={cn(
+              "text-xs",
+              deleteNotice.tone === "ok" ? "text-slate-500" : "text-red-500",
+            )}
+          >
+            {deleteNotice.text}
+          </p>
         )}
       </Card>
 
